@@ -1415,7 +1415,12 @@ api.onAchNew((d) => {
 // updates
 // =====================================================================
 S.update = null;
-function stripMd(t) { return String(t || '').replace(/\*\*|__|`/g, '').replace(/^#+\s*/gm, '').replace(/^\s*[-*]\s+/gm, '• ').trim(); }
+function stripMd(t) {
+  return String(t || '').replace(/\r\n?/g, '\n')
+    .split('\n').filter((l) => !/full changelog/i.test(l)).join('\n')
+    .replace(/\*\*|__|`/g, '').replace(/^#+[ \t]*/gm, '').replace(/^[ \t]*[-*][ \t]+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n').trim();
+}
 function openUpdate() {
   const u = S.update;
   if (!u) return;
