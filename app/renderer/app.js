@@ -40,6 +40,8 @@ const I = {
   grid: () => icon(['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'], { size: 44 }),
   plus: () => icon(['M12 5v14', 'M5 12h14'], { size: 44 }),
   download: () => icon(['M12 3v12', 'M7 10l5 5 5-5', 'M5 21h14'], { size: 20 }),
+  trophy: (size = 14) => icon(['M8 21h8', 'M12 17v4', 'M7 4h10v5a5 5 0 0 1-10 0z', 'M17 5h3v2a3 3 0 0 1-3 3', 'M7 5H4v2a3 3 0 0 0 3 3'], { size }),
+  lock: (size = 14) => icon(['M6 11h12v10H6z', 'M8 11V7a4 4 0 0 1 8 0v4'], { size }),
 };
 
 // Title in a fixed-height box: shrink on one line first, then allow two lines, so layout never jumps.
@@ -102,6 +104,7 @@ const TABS = [
   { id: 'steam', label: 'Steam' },
   { id: 'epic', label: 'Epic' },
   { id: 'custom', label: 'Мои игры' },
+  { id: 'trophies', label: 'Трофеи' },
 ];
 const SOURCE = { steam: 'Steam', epic: 'Epic Games', custom: 'Своя игра' };
 // all bright enough for black text on accent buttons
@@ -437,10 +440,10 @@ function press(btn) {
   switch (btn) {
     case 'A': if (f && f._act) { sound(f.dataset.sfx || 'select'); squish(f); f._act(); } else if (!f) defaultFocus(); break;
     case 'B': sound('back'); if (layer) (layer.onBack ? layer.onBack() : popLayer()); else if (S.tab !== 'home') setTab('home'); break;
-    case 'X': if (f && f._alt) f._alt(); else if (!layer && S.tab !== 'home') cycleSort(); break;
-    case 'Y': if (!layer) openSearch(); break;
+    case 'X': if (f && f._alt) f._alt(); else if (!layer && S.tab !== 'home' && S.tab !== 'trophies') cycleSort(); break;
+    case 'Y': if (!layer) { if (S.tab === 'trophies') { toast('Обновляю достижения…'); openTrophies(true); } else openSearch(); } break;
     case 'MENU': if (!layer) openSettings(); else if (layer.kind === 'settings') popLayer(); break;
-    case 'VIEW': if (!layer && S.tab !== 'home') cycleFilter(); break;
+    case 'VIEW': if (!layer && S.tab !== 'home' && S.tab !== 'trophies') cycleFilter(); break;
     case 'LB': if (!layer) cycleTab(-1); break;
     case 'RB': if (!layer) cycleTab(1); break;
     case 'up': case 'down': case 'left': case 'right': move(btn); break;
@@ -567,8 +570,9 @@ function updateHints() {
   if (layer && layer.hints) list = typeof layer.hints === 'function' ? layer.hints() : layer.hints;
   else {
     const onGame = S.focused && S.focused._alt;
-    list = [['A', 'Выбрать'], onGame && ['X', 'Действия'], !onGame && S.tab !== 'home' && ['X', 'Сортировка'],
-      S.tab !== 'home' && ['VIEW', 'Фильтр'], ['Y', 'Поиск'], ['MENU', 'Настройки']];
+    const lib = S.tab !== 'home' && S.tab !== 'trophies';
+    list = [['A', 'Выбрать'], onGame && S.tab !== 'trophies' && ['X', 'Действия'], !onGame && lib && ['X', 'Сортировка'],
+      lib && ['VIEW', 'Фильтр'], ['Y', S.tab === 'trophies' ? 'Обновить' : 'Поиск'], ['MENU', 'Настройки']];
   }
   bar.replaceChildren(
     h('span', { class: 'left', text: layer ? '' : S.input === 'kb' ? 'Q / E — разделы  ·  F11 — полный экран  ·  ПКМ — действия' : 'LB / RB — разделы  ·  F11 — полный экран' }),
@@ -847,7 +851,8 @@ function setHero(id) {
   renderHero();
 }
 function heroMeta(g) {
-  return [SOURCE[g.source] || 'Игра', g.minutes ? `сыграно ${fmtTime(g.minutes)}` : 'ещё не запускалась', g.lastPlayed ? `последний раз ${fmtAgo(g.lastPlayed)}` : null].filter(Boolean).join(' · ');
+  return [SOURCE[g.source] || 'Игра', g.minutes ? `сыграно ${fmtTime(g.minutes)}` : 'ещё не запускалась', g.lastPlayed ? `последний раз ${fmtAgo(g.lastPlayed)}` : null,
+    g.ach ? `достижения ${g.ach.u} из ${g.ach.t}` : null].filter(Boolean).join(' · ');
 }
 function heroEyebrow(g) {
   const playing = S.session && S.session.gameId === g.id;
@@ -957,7 +962,8 @@ function renderLibrary() {
     grid.append(h('div', { class: 'gcell' },
       gameTile(g, 'cover', null),
       h('span', { class: 'cap', text: g.name }),
-      h('span', { class: 'cap2', text: g.minutes ? fmtTime(g.minutes) : g.installed ? 'не запускалась' : 'не установлена' })));
+      h('span', { class: 'cap2' }, g.minutes ? fmtTime(g.minutes) : g.installed ? 'не запускалась' : 'не установлена',
+        g.ach && g.ach.u ? h('span', { class: `cap-ach${g.ach.u === g.ach.t ? ' full' : ''}` }, I.trophy(), `${Math.floor((g.ach.u / g.ach.t) * 100)}%`) : null)));
   }
   const empty = !list.length && S.tab !== 'custom' && !(S.tab === 'epic' && !S.epic.account)
     ? h('div', { class: 'empty', text: S.libFilter === 'hidden' ? 'Скрытых игр нет.'
@@ -990,12 +996,14 @@ function setTab(id) {
   S.tab = id;
   renderTabs();
   $('#view-home').hidden = id !== 'home';
-  $('#view-library').hidden = id === 'home';
+  $('#view-library').hidden = id === 'home' || id === 'trophies';
+  $('#view-trophies').hidden = id !== 'trophies';
   if (S.focused) S.focused.classList.remove('is-focused');
   S.focused = null;
   if (id === 'home') { renderHome(); }
+  else if (id === 'trophies') { setHeroArt(null); openTrophies(); }
   else { setHeroArt(null); renderLibrary(); }
-  intro(id === 'home' ? $('#view-home') : $('#view-library'));
+  intro(id === 'home' ? $('#view-home') : id === 'trophies' ? $('#view-trophies') : $('#view-library'));
   defaultFocus();
 }
 // staggered entrance for tiles after switching sections
@@ -1020,7 +1028,7 @@ function refresh() {
   if (layers.length) { for (const l of layers) if (l.refresh) l.refresh(); return; }
   const key = S.focused ? (S.focused.getAttribute('aria-label') || S.focused.dataset.key) : null;
   const row = S.focused ? S.focused.dataset.row : null;
-  if (S.tab === 'home') renderHome(); else renderLibrary();
+  if (S.tab === 'home') renderHome(); else if (S.tab === 'trophies') renderTrophies(); else renderLibrary();
   if (S.focused && S.focused.isConnected) return;
   S.focused = null;
   const els = scopeEls().filter(isShown);
@@ -1084,6 +1092,7 @@ function openGame(id) {
             h('div', { class: 'fact' }, h('b', { text: playing ? 'Запущена' : dlFor(g) ? DL_LABEL[dlFor(g).state] : g.installed ? 'Установлена' : 'Нет' }), h('span', { text: 'Статус' })),
             g.size ? h('div', { class: 'fact' }, h('b', { text: fmtBytes(g.size) }), h('span', { text: 'На диске' })) : null),
           dlFor(g) ? dlBar(dlFor(g), 'big') : null,
+          g.source === 'steam' ? achBlock(g, layer) : null,
           h('div', { class: 'gp-actions' }, ...acts),
           g.exe ? h('div', { class: 'gp-path', text: g.exe + (g.trackExe ? `  ·  учёт по процессу ${g.trackExe}` : '') }) : null),
         cover)));
@@ -1195,6 +1204,260 @@ function askSgdbKey(then, bad = false) {
       ['Открыть сайт в браузере', () => api.openUrl('https://www.steamgriddb.com/profile/preferences/api')],
       ['Отмена', () => {}],
     ]);
+}
+
+// =====================================================================
+// Steam achievements
+// =====================================================================
+S.achData = {};
+const pctText = (p) => (p == null ? '' : `${p < 10 ? p.toLocaleString('ru-RU', { maximumFractionDigits: 1 }) : Math.round(p)}% игроков`);
+const rarityOf = (p) => (p == null ? '' : p < 2 ? 'ultra' : p < 10 ? 'rare' : '');
+const RARITY = { ultra: 'Ультраредкое', rare: 'Редкое' };
+function fmtDate(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+}
+function achIcon(a, size = 64) {
+  const img = h('img', { class: `ach-ic${a.unlocked ? '' : ' off'}`, alt: '', src: a.icon || '', style: `width:${size}px;height:${size}px` });
+  img.onerror = () => img.replaceWith(h('span', { class: 'ach-ic ph', style: `width:${size}px;height:${size}px` }, I.trophy(size * 0.45)));
+  return img;
+}
+async function loadAch(id, force) {
+  const c = S.achData[id];
+  if (!force && c && Date.now() - c.at < 10 * 60e3) return c;
+  const r = await api.achGame(id, force);
+  const entry = r.error ? { error: r.error, code: r.code, at: Date.now() } : { data: r.data, at: Date.now() };
+  S.achData[id] = entry;
+  if (r.game) { const i = S.games.findIndex((x) => x.id === id); if (i >= 0) S.games[i] = r.game; }
+  return entry;
+}
+function achBar(u, t) {
+  return h('div', { class: 'ach-bar' }, h('div', { style: `width:${t ? (u / t) * 100 : 0}%` }));
+}
+// the block on a game's page: progress plus the latest unlocked icons
+function achBlock(g) {
+  const box = h('div', { class: 'ach-block loading' }, h('span', { class: 'ach-wait', text: 'Загружаю достижения…' }));
+  const fill = (c) => {
+    if (!box.isConnected && box._filled) return;
+    box._filled = true;
+    box.classList.remove('loading');
+    if (c.error) {
+      box.replaceChildren(h('span', { class: 'ach-wait', text: c.code === 'NOKEY' ? 'Добавь ключ Steam API в настройках, чтобы видеть достижения' : c.error }));
+      return;
+    }
+    const d = c.data;
+    if (!d.total) { box.remove(); return; }
+    const recent = d.items.filter((i) => i.unlocked).sort((a, b) => b.time - a.time).slice(0, 6);
+    const keep = S.focused && box.contains(S.focused);
+    const btn = h('button', { class: 'ach-sum', nav: 'gpa', key: 'ach', act: () => openAchievements(g.id) },
+      h('span', { class: 'ach-sum-l' },
+        h('span', { class: 'ach-sum-t' }, I.trophy(20), h('b', { text: 'Достижения' }), h('span', { text: `${d.unlocked} из ${d.total}` })),
+        achBar(d.unlocked, d.total)),
+      h('span', { class: 'ach-sum-r' }, ...recent.map((a) => achIcon(a, 44)),
+        recent.length ? null : h('span', { class: 'ach-wait', text: 'Пока ни одного' })));
+    box.replaceChildren(btn);
+    if (keep) focus(btn, { scroll: false });
+  };
+  const c = S.achData[g.id];
+  if (c && Date.now() - c.at < 10 * 60e3) fill(c);
+  else loadAch(g.id).then(fill);
+  return box;
+}
+
+const ACH_FILTERS = { all: 'Все', got: 'Полученные', left: 'Не полученные' };
+async function openAchievements(gameId) {
+  const g = byId(gameId);
+  if (!g) return;
+  let filter = 'all';
+  const root = h('div', { class: 'achp' });
+  const layer = { el: root, kind: 'ach', hints: () => [['X', `Фильтр: ${ACH_FILTERS[filter].toLowerCase()}`], ['Y', 'Обновить'], ['B', 'Назад']] };
+  const render = (c) => {
+    if (c.error) {
+      root.replaceChildren(h('div', { class: 'achp-head' }, h('div', {}, h('span', { class: 'eyebrow', text: 'Достижения' }), h('h1', { text: g.name }))),
+        h('div', { class: 'achp-scroll' }, h('div', { class: 'pick-status', text: c.code === 'NOKEY' ? 'Добавь ключ Steam Web API в настройках (≡ → Steam), чтобы видеть достижения.' : c.error })));
+      return;
+    }
+    const d = c.data;
+    const items = d.items.filter((i) => (filter === 'got' ? i.unlocked : filter === 'left' ? !i.unlocked : true))
+      .sort((a, b) => (b.unlocked - a.unlocked) || (a.unlocked ? b.time - a.time : (b.pct ?? -1) - (a.pct ?? -1)));
+    const list = h('div', { class: 'ach-list' }, ...items.map((a, k) => {
+      const r = rarityOf(a.pct);
+      return h('button', { class: `ach-row${a.unlocked ? ' got' : ''}${r ? ` ${r}` : ''}`, nav: `ar${Math.floor(k / 2)}`, style: `--i:${Math.min(k, 14)}` },
+        achIcon(a, 64),
+        h('span', { class: 'ach-txt' },
+          h('b', { text: a.hidden ? 'Скрытое достижение' : a.name }),
+          h('span', { text: a.hidden ? 'Подробности откроются после получения' : a.desc || '' })),
+        h('span', { class: 'ach-meta' },
+          r ? h('span', { class: `ach-rar ${r}`, text: RARITY[r] }) : null,
+          h('span', { text: pctText(a.pct) }),
+          a.unlocked && a.time ? h('span', { class: 'ach-date', text: fmtDate(a.time) }) : null));
+    }));
+    const keep = S.focused && root.contains(S.focused) ? [...root.querySelectorAll('.ach-row')].indexOf(S.focused) : -1;
+    root.replaceChildren(
+      h('div', { class: 'achp-head' },
+        h('div', {},
+          h('span', { class: 'eyebrow', text: 'Достижения' }),
+          h('h1', { text: g.name }),
+          h('div', { class: 'achp-prog' }, h('b', { text: `${d.unlocked} из ${d.total}` }), achBar(d.unlocked, d.total), h('span', { text: `${Math.floor((d.unlocked / d.total) * 100)}%` }))),
+        h('span', { class: 'chip' }, glyph('X'), ACH_FILTERS[filter])),
+      h('div', { class: 'achp-scroll', 'data-scroll': 'y' }, items.length ? list : h('div', { class: 'pick-status', text: 'Здесь пусто' })));
+    const rows = root.querySelectorAll('.ach-row');
+    if (rows.length) focus(rows[Math.max(0, Math.min(keep, rows.length - 1))], { scroll: false });
+    updateHints();
+  };
+  layer.handle = (btn) => {
+    if (btn === 'X') { const k = Object.keys(ACH_FILTERS); filter = k[(k.indexOf(filter) + 1) % k.length]; sound('tab'); render(S.achData[gameId]); return true; }
+    if (btn === 'Y') { root.classList.add('busy'); loadAch(gameId, true).then((c) => { root.classList.remove('busy'); render(c); toast('Достижения обновлены'); }); return true; }
+    return false;
+  };
+  layer.focusFirst = () => { const r = root.querySelector('.ach-row'); if (r) focus(r); };
+  root.append(h('div', { class: 'pick-status', text: 'Загружаю достижения…' }));
+  pushLayer(layer);
+  render(await loadAch(gameId));
+}
+
+// --- Trophies screen
+async function openTrophies(force) {
+  const view = $('#view-trophies');
+  if (S.trophies && !force && Date.now() - S.trophies.at < 5 * 60e3) { renderTrophies(); return; }
+  if (!S.trophies) view.replaceChildren(h('div', { class: 'tr-wait' }, I.trophy(48), h('b', { text: 'Собираю достижения…' }), h('span', { id: 'tr-prog', text: '' })));
+  const r = await api.achAll(!!force);
+  if (r.library) applyLibrary(r.library);
+  S.trophies = { at: Date.now(), games: r.games || [], error: r.error, code: r.code };
+  if (S.tab === 'trophies' && !layers.length) { renderTrophies(); intro(view); defaultFocus(); }
+}
+api.onAchProgress((p) => { const el = $('#tr-prog'); if (el) el.textContent = p.total ? `${p.done} из ${p.total} игр` : ''; });
+
+function achCard(a, game, row) {
+  const r = rarityOf(a.pct);
+  return h('button', { class: `tile ach-card${r ? ` ${r}` : ''}`, nav: row, 'aria-label': `${a.name} — ${game.name}`, act: () => openAchievements(game.id) },
+    achIcon(a, 72),
+    h('span', { class: 'ach-txt' },
+      h('b', { text: a.name }),
+      h('span', { text: game.name }),
+      h('span', { class: 'ach-sub', text: [a.time ? fmtDate(a.time) : null, pctText(a.pct)].filter(Boolean).join(' · ') })));
+}
+function renderTrophies() {
+  const view = $('#view-trophies');
+  const T = S.trophies;
+  if (!T) return;
+  const games = T.games.map((x) => ({ g: byId(x.id), d: x.data })).filter((x) => x.g && x.d && x.d.total);
+  if (!games.length) {
+    const msg = T.code === 'NOKEY' || !S.settings.steamKey ? 'Чтобы видеть достижения Steam, добавь ключ Steam Web API в настройках (≡ → Steam).'
+      : T.code === 'PRIVATE' ? 'Steam не отдаёт достижения: в настройках приватности профиля Steam открой «Сведения об играх» и нажми Y, чтобы обновить.'
+        : T.error || 'Пока нет достижений. Поиграй во что-нибудь из Steam!';
+    view.replaceChildren(h('div', { class: 'lib-head' }, h('div', {}, h('h1', { text: 'Трофеи' }))), h('div', { class: 'lib-scroll' }, h('div', { class: 'empty', text: msg })));
+    return;
+  }
+  const all = [];
+  for (const { g, d } of games) for (const a of d.items) if (a.unlocked) all.push({ a, g });
+  const perfect = games.filter(({ d }) => d.unlocked === d.total);
+  const avg = Math.round(games.reduce((s2, { d }) => s2 + d.unlocked / d.total, 0) / games.length * 100);
+  const rarest = all.filter((x) => x.a.pct != null).sort((x, y) => x.a.pct - y.a.pct);
+  const recent = [...all].sort((x, y) => y.a.time - x.a.time);
+  const near = games.filter(({ d }) => d.unlocked < d.total && d.unlocked / d.total >= 0.5).sort((x, y) => y.d.unlocked / y.d.total - x.d.unlocked / x.d.total);
+  const byPct = [...games].sort((x, y) => (y.d.unlocked / y.d.total) - (x.d.unlocked / x.d.total) || y.d.unlocked - x.d.unlocked);
+
+  const stat = (v, l) => h('div', { class: 'tr-stat' }, h('b', { text: v }), h('span', { text: l }));
+  const block = (title, sub, row) => h('div', { class: 'row-wrap' }, h('div', { class: 'row-title' }, h('h2', { text: title }), sub ? h('span', { text: sub }) : null), row);
+  const rowOf = (els) => h('div', { class: 'row', 'data-scroll': 'x' }, ...els);
+  const progTile = (g, d, kind, row) => {
+    const t = gameTile(g, kind, row, kind === 'wide' ? { sub: `${d.unlocked} из ${d.total}` } : {});
+    t._act = () => openAchievements(g.id);
+    t.append(h('div', { class: `tile-prog${d.unlocked === d.total ? ' full' : ''}` }, h('div', { style: `width:${(d.unlocked / d.total) * 100}%` })));
+    if (kind === 'cover') t.append(h('span', { class: `badge ach-badge${d.unlocked === d.total ? ' full' : ''}` }, I.trophy(12), `${Math.floor((d.unlocked / d.total) * 100)}%`));
+    return t;
+  };
+  const prevScroll = view.querySelector('.home-scroll')?.scrollTop || 0;
+  const scroller = h('div', { class: 'home-scroll tr-scroll', 'data-scroll': 'y' },
+    h('div', { class: 'home-inner tr-inner' },
+      h('div', { class: 'tr-head' },
+        h('div', {}, h('h1', { text: 'Трофеи' }), h('div', { class: 'sub', text: `Достижения Steam · ${gamesWord(games.length)}` })),
+        h('div', { class: 'tr-stats' },
+          stat(all.length.toLocaleString('ru-RU'), 'получено'),
+          stat(String(perfect.length), perfect.length === 1 ? 'игра на 100%' : 'игр на 100%'),
+          stat(`${avg}%`, 'средний прогресс'),
+          rarest[0] ? stat(pctText(rarest[0].a.pct).replace(' игроков', ''), 'самое редкое') : null)),
+      recent.length ? block('Последние', null, rowOf(recent.slice(0, 20).map(({ a, g }) => achCard(a, g, 'tr-recent')))) : null,
+      rarest.length ? block('Самые редкие', 'твои достижения, которые есть у немногих', rowOf(rarest.slice(0, 20).map(({ a, g }) => achCard(a, g, 'tr-rare')))) : null,
+      near.length ? block('Почти на 100%', null, rowOf(near.slice(0, 12).map(({ g, d }) => progTile(g, d, 'wide', 'tr-near')))) : null,
+      block('Все игры', 'по прогрессу', rowOf(byPct.map(({ g, d }) => progTile(g, d, 'cover', 'tr-all'))))));
+  scroller.addEventListener('scroll', () => $('#topbar').classList.toggle('solid', scroller.scrollTop > 40));
+  view.replaceChildren(scroller);
+  scroller.scrollTop = prevScroll;
+}
+
+// unlocked while playing: a card when Lobby comes back
+api.onAchNew((d) => {
+  if (d.library) applyLibrary(d.library);
+  S.achData[d.gameId] = { data: d.data, at: Date.now() };
+  if (S.trophies) S.trophies.at = 0;
+  const g = byId(d.gameId);
+  if (!g) return;
+  const items = d.items.slice(0, 5);
+  const box = h('div', { class: 'menu achnew', role: 'dialog' },
+    h('span', { class: 'eyebrow', text: 'Получено во время игры' }),
+    h('h2', { text: g.name }),
+    h('div', { class: 'achnew-list' }, ...items.map((a, k) => h('div', { class: `achnew-row ${rarityOf(a.pct)}`, style: `--i:${k}` },
+      achIcon({ ...a, unlocked: true }, 56),
+      h('span', { class: 'ach-txt' }, h('b', { text: a.name }), h('span', { text: [RARITY[rarityOf(a.pct)], pctText(a.pct)].filter(Boolean).join(' · ') }))))),
+    d.items.length > 5 ? h('p', { text: `и ещё ${d.items.length - 5}` }) : null,
+    h('div', { class: 'sl-actions' },
+      h('button', { class: 'btn primary', nav: 'an', key: 'ok', act: () => popLayer(layer) }, 'Отлично'),
+      h('button', { class: 'btn', nav: 'an', act: () => { popLayer(layer); openAchievements(g.id); } }, 'Все достижения')));
+  const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'achnew', hints: [['A', 'Выбрать'], ['B', 'Закрыть']] };
+  setTimeout(() => { pushLayer(layer); sound('done'); }, 600);
+  refreshAll();
+});
+
+// =====================================================================
+// updates
+// =====================================================================
+S.update = null;
+function stripMd(t) { return String(t || '').replace(/\*\*|__|`/g, '').replace(/^#+\s*/gm, '').replace(/^\s*[-*]\s+/gm, '• ').trim(); }
+function openUpdate() {
+  const u = S.update;
+  if (!u) return;
+  const bar = h('div', { class: 'upd-bar' }, h('div', {}));
+  const status = h('div', { class: 'upd-status', text: `${fmtBytes(u.size || 0)} · установится и перезапустится само` });
+  const go = h('button', { class: 'btn primary', nav: 'ub', key: 'go', act: async () => {
+    if (u.busy) return;
+    u.busy = true;
+    box.classList.add('dl');
+    go.textContent = 'Загрузка…';
+    const r = await api.updateDownload();
+    if (!r.ok) { u.busy = false; box.classList.remove('dl'); go.textContent = 'Повторить'; status.textContent = r.error; return; }
+    status.textContent = 'Устанавливаю… Lobby перезапустится через пару секунд';
+    go.textContent = 'Установка…';
+    await api.updateInstall();
+  } }, 'Обновить сейчас');
+  const box = h('div', { class: 'menu upd', role: 'dialog' },
+    h('span', { class: 'eyebrow', text: 'Доступно обновление' }),
+    h('h2', { text: `Lobby ${u.version}` }),
+    h('div', { class: 'upd-notes', 'data-scroll': 'y', text: stripMd(u.notes) || 'Исправления и улучшения.' }),
+    bar, status,
+    h('div', { class: 'sl-actions' }, go, h('button', { class: 'btn', nav: 'ub', act: () => popLayer(layer) }, 'Позже')));
+  const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'update', hints: [['A', 'Выбрать'], ['B', 'Позже']] };
+  layer.onUpdate = (d) => {
+    if (d.state === 'downloading') { bar.firstChild.style.width = `${d.total ? (d.got / d.total) * 100 : 0}%`; status.textContent = `${fmtBytes(d.got)} из ${fmtBytes(d.total)}`; }
+  };
+  layer.focusFirst = () => focus(go);
+  pushLayer(layer);
+}
+api.onUpdate((d) => {
+  if (d.state === 'available') {
+    const isNew = !S.update || S.update.version !== d.version;
+    S.update = { ...d };
+    if (isNew) toast(`Доступна версия ${d.version} — обновить можно в настройках (≡)`);
+    for (const l of layers) if (l.kind === 'settings') l.refresh();
+  }
+  for (const l of layers) if (l.onUpdate) l.onUpdate(d);
+});
+async function checkUpdates() {
+  toast('Проверяю обновления…');
+  const r = await api.updateCheck();
+  if (r.error) return toast(r.error, 'warn');
+  if (r.available) { S.update = { ...r }; openUpdate(); } else toast(`У тебя последняя версия — ${r.current}`);
 }
 
 // generic menu & confirm
@@ -1444,6 +1707,9 @@ function openSettings() {
       h('div', { class: 'group-label', text: 'Игры' }),
       row('add', 'Добавить свою игру', '.exe, ярлык .lnk или .url', '', () => { popLayer(layer); addGame(); }),
       h('div', { class: 'group-label', text: 'Приложение' }),
+      S.update ? row('upd', `Обновить до ${S.update.version}`, 'Скачается и установится само', h('span', { class: 'upd-dot', text: 'Новое' }), openUpdate) : null,
+      row('ver', `Версия ${S.version || ''}`, 'Проверить обновления', '', checkUpdates),
+      row('autoupd', 'Проверять обновления', 'При запуске и раз в несколько часов', tog(st.autoUpdate), () => set({ autoUpdate: !st.autoUpdate })),
       row('minw', 'Свернуть Lobby', null, '', () => api.minimize()),
       row('quit', 'Выйти из Lobby', null, '', () => api.quit()),
     );
@@ -1704,6 +1970,7 @@ async function boot() {
   applyAccent();
   applyLibrary(await api.getLibrary());
   S.downloads = await api.getDownloads();
+  api.updateGet().then((u) => { S.version = u.current; if (u.info) S.update = u.info; });
   $('#btn-search')._act = openSearch;
   $('#btn-settings')._act = openSettings;
   renderTabs(); renderProfile(); tickClock();

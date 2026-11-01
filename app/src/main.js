@@ -8,6 +8,8 @@ const { pathToFileURL } = require('url');
 const steam = require('./steam');
 const epic = require('./epic');
 const guide = require('./guide');
+const achievements = require('./achievements');
+const updater = require('./updater');
 
 // data lives in %APPDATA%\Lobby; carry it over once from the GameLauncher days
 const USER = path.join(app.getPath('appData'), 'Lobby');
@@ -35,7 +37,7 @@ const DEFAULTS = {
   steamKey: '', steamId: '', steamPath: '', accent: '#3FD1A9',
   fullscreen: true, minimizeOnLaunch: true, autostart: false,
   sfxVolume: 50, uiScale: 100, sgdbKey: '',
-  background: true, guideButton: true,
+  background: true, guideButton: true, autoUpdate: true,
 };
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -73,6 +75,7 @@ function viewGame(g) {
     owned: g.source !== 'epic' || g.owned !== false,
     size: g.size || 0,
     hidden: !!g.hidden, minutes, lastPlayed: g.lastPlayed || 0,
+    ach: g.ach && g.ach.t ? g.ach : null,
     exe: g.exe || null, trackExe: g.trackExe || '', args: g.args || '',
     hasCustomCover: !!custom('cover').length, hasCustomHero: !!custom('hero').length,
     art: {
@@ -341,7 +344,9 @@ function endSession() {
   clearInterval(session.timer);
   const s = session;
   session = null;
+  if (s.achTimer) clearInterval(s.achTimer);
   const g = library.games[s.gameId];
+  if (g && g.source === 'steam' && s.state === 'running' && s.achBefore) finishAchievements(g, s);
   let minutes = 0;
   if (g && s.state === 'running') {
     minutes = Math.round((Date.now() - s.start) / 60000);
@@ -372,6 +377,7 @@ function startWatching(gameId, isRunning, waitMs) {
         session.start = Date.now();
         if (settings.minimizeOnLaunch && win) win.minimize();
         send('session', { state: 'running', gameId, since: session.start });
+        trackAchievements(session);
       } else if (Date.now() - created > waitMs) {
         endSession();
       }
@@ -379,6 +385,101 @@ function startWatching(gameId, isRunning, waitMs) {
       if (++session.misses >= 2) endSession();
     } else session.misses = 0;
   }, 3000);
+}
+
+// ---------- updates ----------
+const upd = updater.create({ current: app.getVersion(), tempDir: app.getPath('temp') });
+let updateInfo = null;
+async function checkUpdate(manual) {
+  try {
+    const r = await upd.check();
+    updateInfo = r.available ? r : null;
+    if (r.available) send('update', { state: 'available', ...r });
+    return r;
+  } catch (e) { return manual ? { error: e.message } : null; }
+}
+async function downloadUpdate() {
+  try {
+    await upd.download((got, total) => send('update', { state: 'downloading', got, total }));
+    send('update', { state: 'ready' });
+    return { ok: true };
+  } catch (e) {
+    send('update', { state: 'error', error: e.message });
+    return { ok: false, error: e.message };
+  }
+}
+
+// ---------- Steam achievements ----------
+const ach = achievements.create({
+  dir: path.join(USER, 'achievements'),
+  getKey: () => settings.steamKey,
+  getSteamId: () => (library.profile && library.profile.steamId) || '',
+});
+function storeSummary(g, data) {
+  g.ach = ach.summary(data);
+  g.achAt = Date.now();
+}
+async function achForGame(id, force) {
+  const g = library.games[id];
+  if (!g || g.source !== 'steam') return { error: 'Достижения есть только у игр Steam' };
+  try {
+    const data = await ach.forGame(g.appid, { force });
+    storeSummary(g, data);
+    saveLibrary();
+    return { data, game: viewGame(g) };
+  } catch (e) { return { error: e.message, code: e.code || null }; }
+}
+// fill in achievements for every played Steam game; reports progress to the Trophies screen
+let sweeping = null;
+function achSweep(force) {
+  if (sweeping) return sweeping;
+  sweeping = (async () => {
+    const games = Object.values(library.games).filter((g) => g.source === 'steam' && ((g.steamMinutes || 0) > 0 || (g.ach && g.ach.u)));
+    const stale = games.filter((g) => force || !g.achAt || Date.now() - g.achAt > 6 * 3600e3);
+    let done = 0;
+    let error = null;
+    send('ach-progress', { done, total: stale.length });
+    await epic.pool(stale, 4, async (g) => {
+      try { storeSummary(g, await ach.forGame(g.appid)); } catch (e) { if (['PRIVATE', 'KEY', 'NOKEY'].includes(e.code)) error = { error: e.message, code: e.code }; }
+      done++;
+      if (done % 5 === 0 || done === stale.length) send('ach-progress', { done, total: stale.length });
+    });
+    saveLibrary();
+    // everything from cache now: per game list for the Trophies screen
+    const out = [];
+    for (const g of games) {
+      if (!g.ach || !g.ach.t) continue;
+      try { const d = await ach.forGame(g.appid); out.push({ id: g.id, data: d }); } catch { /* skip */ }
+    }
+    return { games: out, library: view(), ...(error || {}) };
+  })().finally(() => { sweeping = null; });
+  return sweeping;
+}
+// while a Steam game runs: remember what was unlocked at the start, check once a minute
+async function trackAchievements(s) {
+  const g = library.games[s.gameId];
+  if (!g || g.source !== 'steam' || !settings.steamKey) return;
+  try {
+    const d = await ach.forGame(g.appid, { force: true });
+    if (!d.total) return;
+    s.achBefore = new Set(d.items.filter((i) => i.unlocked).map((i) => i.id));
+    s.achFresh = [];
+    s.achTimer = setInterval(async () => {
+      try {
+        const r = await ach.newSince(g.appid, s.achBefore);
+        for (const f of r.fresh) { s.achBefore.add(f.id); s.achFresh.push(f); }
+      } catch { /* try again next minute */ }
+    }, 60e3);
+  } catch { /* no achievements for this game */ }
+}
+async function finishAchievements(g, s) {
+  try {
+    const r = await ach.newSince(g.appid, s.achBefore);
+    const fresh = [...s.achFresh, ...r.fresh];
+    storeSummary(g, r.data);
+    saveLibrary();
+    if (fresh.length) send('ach-new', { gameId: g.id, items: fresh, data: r.data, library: view() });
+  } catch { /* offline: next sweep catches up */ }
 }
 
 async function launch(id) {
@@ -667,6 +768,17 @@ ipcMain.handle('game:uninstall', (_e, id) => uninstallGame(id));
 ipcMain.handle('game:folder', (_e, id) => { const g = library.games[id]; return g && g.source === 'custom' ? customGameDir(g) : null; });
 ipcMain.handle('downloads:get', () => downloads);
 ipcMain.handle('app:steamDownloads', () => shell.openExternal('steam://open/downloads'));
+ipcMain.handle('update:check', () => checkUpdate(true));
+ipcMain.handle('update:get', () => ({ current: app.getVersion(), info: updateInfo }));
+ipcMain.handle('update:download', () => downloadUpdate());
+ipcMain.handle('update:install', () => {
+  try { upd.install(); } catch (e) { return { ok: false, error: e.message }; }
+  quitting = true;
+  setTimeout(() => app.quit(), 300);
+  return { ok: true };
+});
+ipcMain.handle('ach:game', (_e, id, force) => achForGame(id, !!force));
+ipcMain.handle('ach:all', (_e, force) => achSweep(!!force));
 ipcMain.handle('sgdb:search', wrap(sgdbSearch));
 ipcMain.handle('sgdb:images', wrap(sgdbImages));
 ipcMain.handle('sgdb:apply', wrap(sgdbApply));
@@ -821,6 +933,10 @@ if (!app.requestSingleInstanceLock()) {
     if (settings.autostart && steam.IS_WIN) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); // re-point at Lobby.exe
     createWindow();
     applyBackground();
+    if (steam.IS_WIN) {
+      setTimeout(() => { if (settings.autoUpdate) checkUpdate(false); }, 12000);
+      setInterval(() => { if (settings.autoUpdate) checkUpdate(false); }, 6 * 3600e3);
+    }
     setInterval(pollDownloads, 2500);
   });
   app.on('window-all-closed', () => { if (!tray) app.quit(); });
