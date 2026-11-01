@@ -1947,6 +1947,35 @@ function openSettingsAt(key) {
     if (el) focus(el);
   });
 }
+// levels gained outside a challenge (e.g. the softer XP curve in 1.7.5): show what they unlocked once
+function catchUpRewards() {
+  if (!S.bro) return;
+  const now = unlockLv();
+  let seen = null;
+  try { seen = parseInt(localStorage.getItem('lvlSeen'), 10) || null; } catch { /* ignore */ }
+  if (seen == null) {
+    // first run of 1.7.5: the level this XP gave under the old curve
+    seen = 1;
+    let left = S.bro.xp;
+    while (left >= Math.round(100 * Math.pow(seen, 1.4))) { left -= Math.round(100 * Math.pow(seen, 1.4)); seen++; }
+  }
+  try { localStorage.setItem('lvlSeen', String(now)); } catch { /* ignore */ }
+  const got = now > seen ? rewardsBetween(seen, now) : [];
+  if (!got.length) return;
+  const box = h('div', { class: 'menu bro-pop lvup rewards', role: 'dialog' },
+    h('div', { class: 'bro-pop-face' }, broFace(84, 'happy')),
+    h('span', { class: 'eyebrow', text: 'Опыт пересчитан' }),
+    h('h2', { text: `Уровень ${levelNow()}!` }),
+    h('p', { text: 'Уровни теперь набираются быстрее, и твой опыт уже тянет на новый уровень. Вот что открылось:' }),
+    h('div', { class: 'rw-new' }, h('div', { class: 'rw-list' }, ...got.slice(0, 8).map((r, k) => { const el = rewardChip(r); el.style.setProperty('--i', k); return el; }))),
+    got.length > 8 ? h('p', { text: `и ещё ${got.length - 8}` }) : null,
+    h('div', { class: 'sl-actions' },
+      h('button', { class: 'btn primary', nav: 'bp', act: () => popLayer(layer) }, 'Круто!'),
+      h('button', { class: 'btn', nav: 'bp', act: () => { popLayer(layer); openProfile(); } }, 'Все награды')));
+  const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'bropop', hints: [['A', 'Закрыть']] };
+  pushLayer(layer);
+  sound('launch'); setTimeout(() => sound('reward'), 500);
+}
 // a challenge finished: celebrate, and make a bigger deal of a new level
 function broCelebrate(ev) {
   const c = ev.challenge;
@@ -1969,6 +1998,7 @@ function broCelebrate(ev) {
 }
 api.onBro((d) => {
   if (d.state) S.bro = d.state;
+  try { localStorage.setItem('lvlSeen', String(unlockLv())); } catch { /* ignore */ }
   renderLevel();
   const xpBar = $('#profile');
   xpBar.classList.remove('xp-gain'); void xpBar.offsetWidth; xpBar.classList.add('xp-gain');
@@ -2656,6 +2686,7 @@ async function boot() {
   $('#stage').classList.add('revealing');
   intro($('#view-home'));
   setTimeout(() => { splash.remove(); $('#stage').classList.remove('revealing'); }, 1100);
+  setTimeout(catchUpRewards, 1500);
   doSync();
 }
 try { const a = localStorage.getItem('accent'); if (a) document.documentElement.style.setProperty('--accent', a); } catch { /* ignore */ }

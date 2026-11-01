@@ -11,7 +11,7 @@ const slotsFor = (lv) => 3 + (lv >= PERK_SLOT ? 1 : 0);
 const rerollsFor = (lv) => 2 + (lv >= PERK_REROLL ? 1 : 0);
 
 // experience needed to go from `level` to the next one; grows with every level
-const need = (level) => Math.round(100 * Math.pow(level, 1.4));
+const need = (level) => Math.round(90 * Math.pow(level, 1.05));
 function levelOf(xp) {
   let level = 1;
   let left = xp;
