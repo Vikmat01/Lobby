@@ -324,6 +324,7 @@ function reveal(el, smooth = true) {
   }
 }
 function revealIn(box, el, smooth) {
+  stopGlide(box);
   const s = S.scale;
   if (box.classList.contains('home-scroll') && el.closest('.hero')) {
     box.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
@@ -549,16 +550,67 @@ document.addEventListener('contextmenu', (e) => {
   const el = e.target.closest('[data-nav]');
   if (el && scopeEls().includes(el)) { focus(el, { scroll: false }); if (el._alt) el._alt(); }
 });
-document.addEventListener('mouseover', (e) => {
-  if (document.body.classList.contains('no-cursor')) return;
-  const el = e.target.closest('[data-nav]');
+// hover moves the selection, but not while the wheel is gliding: content slides under a still cursor,
+// and re-focusing every tile it passes (with the hero art swapping) is what made scrolling stutter
+let wheelAt = 0;
+function hoverFocus(target) {
+  if (document.body.classList.contains('no-cursor') || performance.now() - wheelAt < 220) return;
+  const el = target && target.closest && target.closest('[data-nav]');
   if (el && el !== S.focused && scopeEls().includes(el)) focus(el, { scroll: false });
-});
+}
+document.addEventListener('mouseover', (e) => hoverFocus(e.target));
+document.addEventListener('mousemove', (e) => { if (performance.now() - wheelAt < 400) hoverFocus(e.target); });
+// Mouse wheel: one continuous eased glide per container instead of a restarted CSS animation per notch.
+// A vertical wheel over a sideways row scrolls the page; sideways wheels / Shift scroll the row.
+const glides = new Map();
+function stopGlide(box) {
+  const g = glides.get(box);
+  if (!g) return;
+  cancelAnimationFrame(g.raf);
+  glides.delete(box);
+  box.style.scrollBehavior = '';
+}
+function glide(box, axis, delta) {
+  const prop = axis === 'x' ? 'scrollLeft' : 'scrollTop';
+  const max = axis === 'x' ? box.scrollWidth - box.clientWidth : box.scrollHeight - box.clientHeight;
+  if (max <= 0) return false;
+  let g = glides.get(box);
+  if (!g || g.axis !== axis) {
+    stopGlide(box);
+    g = { axis, pos: box[prop], target: box[prop], raf: 0 };
+    glides.set(box, g);
+  }
+  const before = g.target;
+  g.target = Math.max(0, Math.min(max, g.target + delta));
+  if (g.target === before && !g.raf) { glides.delete(box); return false; }
+  box.style.scrollBehavior = 'auto';
+  if (!g.raf) {
+    let last = performance.now();
+    const step = (now) => {
+      const dt = Math.min(48, now - last); last = now;
+      const k = 1 - Math.pow(0.78, dt / 16.7); // frame-rate independent easing
+      g.pos += (g.target - g.pos) * k;
+      if (Math.abs(g.target - g.pos) < 0.5) g.pos = g.target;
+      box[prop] = g.pos;
+      if (g.pos === g.target) { g.raf = 0; glides.delete(box); box.style.scrollBehavior = ''; return; }
+      g.raf = requestAnimationFrame(step);
+    };
+    g.raf = requestAnimationFrame(step);
+  }
+  return true;
+}
 document.addEventListener('wheel', (e) => {
-  const box = e.target.closest('[data-scroll]');
-  if (!box) return;
-  if (box.dataset.scroll === 'x') box.scrollLeft += (e.deltaY || e.deltaX);
-  else box.scrollTop += e.deltaY;
+  if (e.ctrlKey) return;
+  wheelAt = performance.now();
+  const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+  const dx = e.deltaX * unit, dy = e.deltaY * unit;
+  const sideways = e.shiftKey || Math.abs(dx) > Math.abs(dy);
+  const s = S.scale || 1;
+  const yBox = e.target.closest('[data-scroll="y"]');
+  const xBox = e.target.closest('[data-scroll="x"]');
+  if (sideways && xBox) { glide(xBox, 'x', (e.shiftKey ? dy || dx : dx) / s); return; }
+  if (!sideways && yBox && glide(yBox, 'y', dy / s)) return;
+  if (xBox) glide(xBox, 'x', (dy || dx) / s); // a row on a page that doesn't scroll vertically
 }, { passive: true });
 
 // =====================================================================
