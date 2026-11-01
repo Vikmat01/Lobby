@@ -1,7 +1,7 @@
 {
   "name": "lobby",
   "productName": "Lobby",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Lobby — console-style game launcher",
   "main": "src/main.js",
   "private": true,

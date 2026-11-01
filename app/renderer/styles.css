@@ -530,3 +530,58 @@ button { font: inherit; color: inherit; }
 @keyframes bat-blink { 50% { opacity: .35; } }
 
 .upd-notes { overflow-wrap: anywhere; }
+
+/* ---------- profile, level and XP ---------- */
+.profile { border: 0; background: transparent; color: inherit; padding: 6px 14px 6px 6px; margin-left: -6px; border-radius: 999px; text-align: left; transition: background 160ms; }
+.profile.is-focused { background: rgba(255,255,255,.06); }
+.profile-text { display: flex; flex-direction: column; gap: 6px; }
+.profile-top { display: flex; align-items: center; gap: 10px; }
+.lvl-pill { padding: 2px 8px; border-radius: 6px; background: var(--accent); color: #000; font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .04em; }
+.xp-row { display: flex; align-items: center; gap: 10px; }
+.xp-bar { width: 130px; height: 5px; border-radius: 3px; background: #262626; overflow: hidden; }
+.xp-bar > span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width 900ms cubic-bezier(.2,.8,.2,1); }
+.xp-text { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.profile.xp-gain .lvl-pill { animation: lvl-pop 700ms cubic-bezier(.34,1.56,.64,1); }
+.profile.xp-gain .xp-bar { box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); transition: box-shadow 1s; }
+@keyframes lvl-pop { 40% { transform: scale(1.3); } }
+
+/* ---------- Game Bro ---------- */
+.bro-face { color: var(--accent); flex: none; }
+.bro-face .eye { transform-box: fill-box; transform-origin: center; animation: bro-blink 4.5s infinite; }
+@keyframes bro-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+.bro-title { align-items: center; }
+.bro-title span { font-size: 16px; color: var(--text-2); }
+.tile.bro-card { width: 420px; height: 150px; text-align: left; color: var(--text); }
+.bro-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.92) 0%, rgba(0,0,0,.75) 55%, rgba(0,0,0,.35) 100%); z-index: 1; }
+.bro-body { position: absolute; inset: 0; z-index: 2; padding: 16px 18px; display: flex; flex-direction: column; justify-content: space-between; }
+.bro-body b { font-size: 18px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bro-xp { align-self: flex-start; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); font-size: 13px; font-weight: 700; }
+.bro-prog { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-2); }
+.bro-prog .ach-bar { flex: 1; height: 5px; }
+.bro-prog .ach-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.bro-card.done { opacity: .62; }
+.bro-card.done .bro-xp { background: #FFC14533; color: #FFC145; }
+.bro-sheet { gap: 14px; }
+.bro-hero { display: flex; align-items: center; gap: 22px; }
+.bro-say { position: relative; flex: 1; padding: 16px 20px; border-radius: 18px; background: #161616; display: flex; flex-direction: column; gap: 4px; }
+.bro-say::before { content: ''; position: absolute; left: -9px; top: 50%; margin-top: -9px; border: 9px solid transparent; border-left: 0; border-right-color: #161616; }
+.bro-say b { color: var(--accent); font-size: 15px; }
+.bro-say span { font-size: 18px; color: #fff; }
+.bro-level { display: flex; align-items: center; gap: 20px; padding: 18px 20px; border-radius: 16px; background: #121212; }
+.bro-lv { flex: none; width: 72px; height: 72px; border-radius: 18px; background: var(--accent); color: #000; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 800; font-size: 34px; }
+.bro-lvtxt { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.bro-lvtxt b { font-size: 20px; }
+.bro-lvtxt .ach-bar { height: 8px; }
+.bro-lvtxt .ach-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.bro-sub { font-size: 14px; color: var(--text-3); }
+.bro-list { display: flex; flex-direction: column; gap: 12px; }
+.bro-list .tile.bro-card { width: 100%; height: 128px; }
+.bro-note { font-size: 13px; color: var(--text-3); margin-top: 4px; }
+.menu.bro-pop { width: 560px; align-items: center; text-align: center; }
+.menu.bro-pop p { margin: 0; }
+.bro-pop-face { animation: bro-bounce 900ms cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes bro-bounce { 0% { transform: translateY(20px) scale(.6); opacity: 0; } 60% { transform: translateY(-8px) scale(1.08); opacity: 1; } 100% { transform: none; } }
+.bro-pop-xp { font-family: var(--display); font-weight: 800; font-size: 44px; color: var(--accent); animation: rise 500ms cubic-bezier(.2,.8,.2,1) 250ms both; }
+.menu.bro-pop.lvup { border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 80px color-mix(in srgb, var(--accent) 35%, transparent); }
+.menu.bro-pop.lvup h2 { font-size: 44px; }
+.menu.bro-pop .sl-actions { width: 100%; }

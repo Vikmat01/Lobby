@@ -10,6 +10,7 @@ const epic = require('./epic');
 const guide = require('./guide');
 const achievements = require('./achievements');
 const updater = require('./updater');
+const broMod = require('./bro');
 
 // data lives in %APPDATA%\Lobby; carry it over once from the GameLauncher days
 const USER = path.join(app.getPath('appData'), 'Lobby');
@@ -355,6 +356,8 @@ function endSession() {
     else g.localMinutes = (g.localMinutes || 0) + minutes;
     g.lastPlayed = s.start;
     saveLibrary();
+    const ev = bro.played(g.id, minutes);
+    setTimeout(() => broNotify(ev), 900);
   }
   if (win && !win.isDestroyed()) {
     if (win.isMinimized()) win.restore();
@@ -407,6 +410,12 @@ async function downloadUpdate() {
     send('update', { state: 'error', error: e.message });
     return { ok: false, error: e.message };
   }
+}
+
+// ---------- Game Bro ----------
+const bro = broMod.create({ file: path.join(USER, 'bro.json'), getGames: () => Object.values(library.games) });
+function broNotify(events) {
+  if (events && events.length) send('bro', { events, state: bro.view() });
 }
 
 // ---------- Steam achievements ----------
@@ -479,6 +488,7 @@ async function finishAchievements(g, s) {
     storeSummary(g, r.data);
     saveLibrary();
     if (fresh.length) send('ach-new', { gameId: g.id, items: fresh, data: r.data, library: view() });
+    if (fresh.length) setTimeout(() => broNotify(bro.unlocked(g.id, fresh.length)), 2500);
   } catch { /* offline: next sweep catches up */ }
 }
 
@@ -777,6 +787,8 @@ ipcMain.handle('update:install', () => {
   setTimeout(() => app.quit(), 300);
   return { ok: true };
 });
+ipcMain.handle('bro:get', () => bro.view());
+ipcMain.handle('bro:reroll', (_e, id) => ({ ...bro.reroll(id), state: bro.view() }));
 ipcMain.handle('ach:game', (_e, id, force) => achForGame(id, !!force));
 ipcMain.handle('ach:all', (_e, force) => achSweep(!!force));
 ipcMain.handle('sgdb:search', wrap(sgdbSearch));
@@ -941,6 +953,7 @@ if (!app.requestSingleInstanceLock()) {
       if (sig !== lastBat) { lastBat = sig; send('pad-battery', b); }
     };
     setInterval(pollBattery, 20000);
+    setInterval(() => { if (bro.ensureToday()) send('bro', { state: bro.view(), newDay: true }); }, 10 * 60e3);
     setTimeout(pollBattery, 3000);
     ipcMain.handle('pad:battery', () => guide.batteries());
     if (steam.IS_WIN) {

@@ -635,10 +635,7 @@ function renderProfile() {
     img.src = p.avatar;
     av.append(img);
   } else av.textContent = name[0].toUpperCase();
-  const n = visibleGames().length;
-  $('#profile-sub').textContent = S.syncing ? 'Синхронизация со Steam…'
-    : n ? `${gamesWord(n)} · ${S.lastSync ? `обновлено ${new Date(S.lastSync).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : 'не синхронизировано'}`
-      : 'Библиотека пуста';
+  renderLevel();
 }
 function renderPill() {
   const pill = $('#playing-pill');
@@ -780,6 +777,7 @@ function renderHome() {
     h('div', { class: 'home-inner' },
       hero, stats,
       downloadsBlock(block),
+      broBlock(block),
       block(recent.length ? 'Недавние' : 'Установленные', null, recentRow),
       shelf.length ? block('Библиотека', 'Установленные · по времени игры', coverRow(shelf, 'shelf')) : null,
       rest.length ? block('Не установлены', `${gamesWord(rest.length)} · по времени игры`, coverRow(rest, 'rest', true)) : null));
@@ -1412,6 +1410,126 @@ api.onAchNew((d) => {
 });
 
 // =====================================================================
+// Game Bro: daily challenges, experience, levels
+// =====================================================================
+S.bro = null;
+const BRO_GREET = ['Йо! Вот задания на сегодня', 'Бро, есть дело — три челленджа ждут', 'Сегодня без отговорок: погнали!', 'Готов прокачаться? Я подобрал игры', 'Новый день — новый опыт. Разберём?'];
+const BRO_PRAISE = ['Красава!', 'Вот это я понимаю!', 'Чётко!', 'Изи!', 'Мощно!', 'Так держать!'];
+const broLine = () => {
+  const b = S.bro;
+  if (!b || !b.challenges.length) return 'Установи хоть одну игру — и я подкину заданий';
+  if (b.challenges.every((c) => c.done)) return 'Все челленджи закрыты. Красава! Завтра будут новые';
+  return BRO_GREET[new Date().getDate() % BRO_GREET.length];
+};
+function broText(c) {
+  if (c.kind === 'first') return `Запусти ${c.name} впервые и сыграй ${c.target} мин`;
+  if (c.kind === 'return') return `Вернись в ${c.name} на ${c.target} мин`;
+  if (c.kind === 'ach') return `Получи достижение в ${c.name}`;
+  return `Сыграй в ${c.name} ${c.target} мин`;
+}
+const broProg = (c) => (c.kind === 'ach' ? (c.done ? 'выполнено' : 'нужно 1 достижение') : `${c.progress} / ${c.target} мин`);
+function broFace(size = 56, mood = '') {
+  const el = document.createElementNS(SVGNS, 'svg');
+  el.setAttribute('width', size); el.setAttribute('height', size); el.setAttribute('viewBox', '0 0 64 64');
+  el.setAttribute('class', `bro-face ${mood}`); el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `<line x1="32" y1="4" x2="32" y2="12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="32" cy="5" r="4" fill="currentColor"/>
+    <rect x="6" y="12" width="52" height="44" rx="14" fill="#161616" stroke="currentColor" stroke-width="3"/>
+    ${mood === 'happy'
+    ? '<path d="M18 33 q5 -7 10 0 M36 33 q5 -7 10 0" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>'
+    : '<rect class="eye" x="19" y="26" width="7" height="12" rx="3.5" fill="currentColor"/><rect class="eye" x="38" y="26" width="7" height="12" rx="3.5" fill="currentColor"/>'}
+    <path d="M25 46 q7 5 14 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
+  return el;
+}
+function renderLevel() {
+  const b = S.bro;
+  if (!b) return;
+  $('#lvl-pill').textContent = `LV ${b.level}`;
+  $('#xp-fill').style.width = `${Math.min(100, (b.into / b.need) * 100)}%`;
+  $('#xp-text').textContent = `${b.into} / ${b.need} XP`;
+}
+function broCard(c, row) {
+  const g = byId(c.gameId);
+  const kids = [];
+  if (g) { kids.push(placeholder(g), artImg(g.art.wide)); }
+  kids.push(h('span', { class: 'bro-shade' }),
+    h('span', { class: 'bro-body' },
+      h('span', { class: 'bro-xp', text: c.done ? '✓ выполнено' : `+${c.xp} XP` }),
+      h('b', { text: broText(c) }),
+      h('span', { class: 'bro-prog' }, h('span', { class: 'ach-bar' }, h('span', { style: `width:${(c.progress / c.target) * 100}%` })), h('span', { text: broProg(c) }))));
+  return h('button', {
+    class: `tile bro-card${c.done ? ' done' : ''}`, nav: row, 'aria-label': broText(c),
+    act: () => { if (g) openGame(g.id); },
+    alt: c.done ? null : () => rerollBro(c),
+  }, ...kids);
+}
+function broBlock(block) {
+  const b = S.bro;
+  if (!b) return null;
+  const r = h('div', { class: 'row', 'data-scroll': 'x' }, ...b.challenges.map((c) => broCard(c, 'bro')));
+  const head = h('div', { class: 'row-title bro-title' }, broFace(30), h('h2', { text: 'Game Bro' }), h('span', { text: broLine() }));
+  return b.challenges.length ? h('div', { class: 'row-wrap' }, head, r) : h('div', { class: 'row-wrap' }, head);
+}
+async function rerollBro(c) {
+  confirmBox('Заменить челлендж?', `«${broText(c)}» заменится другим. Замен осталось сегодня: ${S.bro.rerolls}.`, 'Заменить', async () => {
+    const r = await api.broReroll(c.id);
+    if (r.error) return toast(r.error, 'warn');
+    S.bro = r.state;
+    sound('tab');
+    refreshAll();
+  });
+}
+function openBro() {
+  const root = h('div', {});
+  const layer = { el: root, kind: 'bro', hints: () => [['A', 'К игре'], ['X', 'Заменить'], ['B', 'Назад']] };
+  layer.refresh = () => {
+    const b = S.bro;
+    const keep = S.focused && root.contains(S.focused) ? S.focused.getAttribute('aria-label') : null;
+    const list = h('div', { class: 'bro-list' }, ...b.challenges.map((c) => broCard(c, 'bl')));
+    root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet bro-sheet', role: 'dialog' },
+      h('div', { class: 'bro-hero' }, broFace(96),
+        h('div', { class: 'bro-say' }, h('b', { text: 'Game Bro' }), h('span', { text: broLine() }))),
+      h('div', { class: 'bro-level' },
+        h('span', { class: 'bro-lv', text: `${b.level}` }),
+        h('div', { class: 'bro-lvtxt' },
+          h('b', { text: `Уровень ${b.level}` }),
+          h('span', { class: 'ach-bar' }, h('span', { style: `width:${(b.into / b.need) * 100}%` })),
+          h('span', { class: 'bro-sub', text: `${b.into} из ${b.need} XP до уровня ${b.level + 1} · всего ${b.xp} XP` }))),
+      h('div', { class: 'group-label', text: `Челленджи на сегодня · замен осталось: ${b.rerolls}` }),
+      b.challenges.length ? list : h('div', { class: 'bro-sub', text: 'Установи хоть одну игру, и Game Bro подберёт задания.' }),
+      h('div', { class: 'bro-note', text: `Время засчитывается за игры, запущенные из Lobby. Выполнено челленджей: ${b.done}.` })));
+    const again = keep && [...root.querySelectorAll('[data-nav]')].find((e) => e.getAttribute('aria-label') === keep);
+    if (again) focus(again, { scroll: false });
+  };
+  layer.refresh();
+  pushLayer(layer);
+}
+// a challenge finished: celebrate, and make a bigger deal of a new level
+function broCelebrate(ev) {
+  const c = ev.challenge;
+  const lv = ev.levelUp;
+  const box = h('div', { class: `menu bro-pop${lv ? ' lvup' : ''}`, role: 'dialog' },
+    h('div', { class: 'bro-pop-face' }, broFace(84, 'happy')),
+    h('span', { class: 'eyebrow', text: lv ? 'Новый уровень' : 'Челлендж выполнен' }),
+    h('h2', { text: lv ? `Уровень ${lv}!` : BRO_PRAISE[Math.floor(Math.random() * BRO_PRAISE.length)] }),
+    h('p', { text: lv ? `Ты апнулся до ${lv} уровня! За «${broText(c)}» +${c.xp} XP` : `${broText(c)} — +${c.xp} XP` }),
+    h('div', { class: 'bro-pop-xp', text: `+${c.xp} XP` }),
+    h('div', { class: 'sl-actions' }, h('button', { class: 'btn primary', nav: 'bp', act: () => popLayer(layer) }, lv ? 'Круто!' : 'Отлично')));
+  const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'bropop', hints: [['A', 'Закрыть']] };
+  pushLayer(layer);
+  if (lv) { sound('launch'); setTimeout(() => sound('done'), 450); } else sound('done');
+}
+api.onBro((d) => {
+  if (d.state) S.bro = d.state;
+  renderLevel();
+  const xpBar = $('#profile');
+  xpBar.classList.remove('xp-gain'); void xpBar.offsetWidth; xpBar.classList.add('xp-gain');
+  let delay = 400;
+  for (const ev of d.events || []) { setTimeout(() => broCelebrate(ev), delay); delay += 300; }
+  refreshAll();
+});
+
+// =====================================================================
 // updates
 // =====================================================================
 S.update = null;
@@ -2004,6 +2122,8 @@ async function boot() {
   api.updateGet().then((u) => { S.version = u.current; if (u.info) S.update = u.info; });
   $('#btn-search')._act = openSearch;
   $('#btn-settings')._act = openSettings;
+  $('#profile')._act = openBro;
+  S.bro = await api.broGet();
   renderTabs(); renderProfile(); tickClock();
   setInterval(tickClock, 1000);
   setInterval(() => { if (runLayer) runLayer.tick(); }, 1000);
