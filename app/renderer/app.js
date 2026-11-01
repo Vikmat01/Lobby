@@ -460,7 +460,8 @@ function pollPads(t) {
   if (!!pads.length !== padConnected) {
     padConnected = !!pads.length;
     $('#pad-state').classList.toggle('on', padConnected);
-    if (padConnected) { toast('Геймпад подключён'); setInput('pad'); } else setInput('kb');
+    if (padConnected) { toast('Геймпад подключён'); setInput('pad'); api.padBattery().then((b) => { lastBattery = b; renderBattery(b); }); } else setInput('kb');
+    renderBattery(lastBattery);
   }
   const active = document.hasFocus() && !document.hidden;
   for (const pad of pads) {
@@ -1444,6 +1445,31 @@ function openUpdate() {
   layer.focusFirst = () => focus(go);
   pushLayer(layer);
 }
+// controller battery next to the gamepad icon; XInput only knows 4 steps, so we draw bars, not a fake percentage
+const BAT_TEXT = ['разряжен', 'низкий заряд', 'средний заряд', 'полный заряд'];
+let batWarned = false;
+function renderBattery(list) {
+  const el = $('#pad-bat');
+  const b = (list || [])[0];
+  if (!b || !padConnected) { el.hidden = true; return; }
+  el.hidden = false;
+  el.className = `pad-bat lvl${b.level}${b.wired ? ' wired' : ''}`;
+  el.title = b.wired ? 'Геймпад: по проводу' : `Геймпад: ${BAT_TEXT[b.level]}`;
+  if (b.wired) {
+    el.replaceChildren(icon(['M9 2v6', 'M15 2v6', 'M6 8h12v4a6 6 0 0 1-12 0z', 'M12 18v4'], { size: 18 }));
+    return;
+  }
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', '30'); svg.setAttribute('height', '16'); svg.setAttribute('viewBox', '0 0 30 16'); svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = `<rect x="1" y="1" width="25" height="14" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="27" y="5" width="2.5" height="6" rx="1" fill="currentColor"/>`
+    + [0, 1, 2].map((k) => `<rect x="${4 + k * 7.2}" y="4" width="5.6" height="8" rx="1.2" fill="currentColor" opacity="${k < Math.max(1, b.level) ? 1 : 0.18}"/>`).join('');
+  el.replaceChildren(svg);
+  if (b.level <= 1 && !batWarned) { batWarned = true; toast(b.level === 0 ? 'Геймпад почти разряжен' : 'У геймпада низкий заряд', 'warn'); }
+  if (b.level >= 2) batWarned = false;
+}
+let lastBattery = [];
+api.onPadBattery((b) => { lastBattery = b; renderBattery(b); });
+
 api.onUpdate((d) => {
   if (d.state === 'available') {
     const isNew = !S.update || S.update.version !== d.version;

@@ -933,6 +933,16 @@ if (!app.requestSingleInstanceLock()) {
     if (settings.autostart && steam.IS_WIN) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); // re-point at Lobby.exe
     createWindow();
     applyBackground();
+    // controller battery, once every 20 s (only sends when something changed)
+    let lastBat = '';
+    const pollBattery = () => {
+      const b = guide.batteries();
+      const sig = JSON.stringify(b);
+      if (sig !== lastBat) { lastBat = sig; send('pad-battery', b); }
+    };
+    setInterval(pollBattery, 20000);
+    setTimeout(pollBattery, 3000);
+    ipcMain.handle('pad:battery', () => guide.batteries());
     if (steam.IS_WIN) {
       setTimeout(() => { if (settings.autoUpdate) checkUpdate(false); }, 12000);
       setInterval(() => { if (settings.autoUpdate) checkUpdate(false); }, 6 * 3600e3);

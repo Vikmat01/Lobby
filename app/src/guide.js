@@ -14,6 +14,7 @@ function init() {
     const kernel32 = koffi.load('kernel32.dll');
     const LoadLibraryW = kernel32.func('void* __stdcall LoadLibraryW(const char16_t *name)');
     const GetProcAddress = kernel32.func('void* __stdcall GetProcAddress(void *mod, uintptr_t name)');
+    const GetProcByName = kernel32.func('GetProcAddress', 'void *', ['void *', 'const char *']);
     let mod = null;
     for (const dll of ['xinput1_4.dll', 'xinput1_3.dll']) { mod = LoadLibraryW(dll); if (mod) break; }
     if (!mod) return api;
@@ -24,12 +25,21 @@ function init() {
       lx: 'int16', ly: 'int16', rx: 'int16', ry: 'int16', pad: 'uint32',
     });
     const proto = koffi.proto('uint32 __stdcall XInputGetStateEx(uint32 idx, _Out_ XINPUT_STATE_EX *state)');
+    const batFn = GetProcByName(mod, 'XInputGetBatteryInformation');
+    const Battery = koffi.struct('XINPUT_BATTERY_INFORMATION', { type: 'uint8', level: 'uint8' });
+    const batProto = koffi.proto('uint32 __stdcall XInputGetBatteryInformation(uint32 idx, uint8 devType, _Out_ XINPUT_BATTERY_INFORMATION *info)');
     const user32 = koffi.load('user32.dll');
     api = {
       read(i) {
         const st = {};
         const r = koffi.call(fn, proto, i, st);
         return r === 0 ? st : null;
+      },
+      // XInput reports 4 steps: 0 empty, 1 low, 2 medium, 3 full; type 1 = wired, 0 = none
+      battery(i) {
+        if (!batFn) return null;
+        const b = {};
+        return koffi.call(batFn, batProto, i, 0, b) === 0 ? b : null;
       },
       keybd: user32.func('void __stdcall keybd_event(uint8 vk, uint8 scan, uint32 flags, uintptr_t extra)'),
       setFg: user32.func('bool __stdcall SetForegroundWindow(void *hwnd)'),
@@ -73,4 +83,18 @@ function watch(onPress) {
   return { ok: true, stop: () => clearInterval(timer) };
 }
 
-module.exports = { watch, forceForeground, available: () => !!init() };
+// battery of every connected controller: [{ slot, wired, level 0..3 }]
+function batteries() {
+  const a = init();
+  if (!a) return [];
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    if (!a.read(i)) continue;
+    const b = a.battery(i);
+    if (!b || b.type === 0) continue;
+    out.push({ slot: i, wired: b.type === 1, level: b.type === 1 ? 3 : Math.min(3, b.level) });
+  }
+  return out;
+}
+
+module.exports = { watch, forceForeground, batteries, available: () => !!init() };

@@ -521,3 +521,10 @@ button { font: inherit; color: inherit; }
 .upd-status { font-size: 14px; color: var(--text-3); min-height: 20px; }
 .upd-dot { padding: 4px 10px; border-radius: 999px; background: var(--accent); color: #000; font-size: 13px; font-weight: 700; }
 .tile img.ach-ic { position: static; inset: auto; opacity: 1; }
+
+/* controller battery */
+.pad-bat { display: flex; align-items: center; color: var(--accent); margin-right: -12px; animation: fade-in 300ms ease both; }
+.pad-bat.lvl1 { color: #F2A65A; }
+.pad-bat.lvl0 { color: #FF5A5F; animation: bat-blink 1.2s ease-in-out infinite; }
+.pad-bat.wired { color: var(--text-2); }
+@keyframes bat-blink { 50% { opacity: .35; } }

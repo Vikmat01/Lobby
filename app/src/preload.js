@@ -42,6 +42,8 @@ contextBridge.exposeInMainWorld('api', {
   updateDownload: call('update:download'),
   updateInstall: call('update:install'),
   onUpdate: (fn) => ipcRenderer.on('update', (_e, d) => fn(d)),
+  padBattery: call('pad:battery'),
+  onPadBattery: (fn) => ipcRenderer.on('pad-battery', (_e, d) => fn(d)),
   onDownloads: (fn) => ipcRenderer.on('downloads', (_e, d) => fn(d)),
   onSession: (fn) => ipcRenderer.on('session', (_e, d) => fn(d)),
 });
