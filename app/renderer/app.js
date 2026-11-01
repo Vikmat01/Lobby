@@ -352,7 +352,22 @@ function revealIn(box, el, smooth) {
 const Sfx = {
   ctx: null,
   get vol() { return (S.settings.sfxVolume ?? 50) / 100; },
+  // sound packs reshape every tone: same melodies, different instrument
   tone(freq, dur, { type = 'sine', gain = 0.2, to = null, at = 0 } = {}) {
+    const pack = S.settings.sfxPack || 'classic';
+    let attack = 0.008;
+    let filter = null;
+    if (pack === 'soft') { type = 'sine'; freq *= 0.75; if (to) to *= 0.75; gain *= 0.9; dur *= 1.5; attack = 0.025; }
+    if (pack === '8bit') {
+      const q = (f) => 440 * Math.pow(2, Math.round(12 * Math.log2(f / 440)) / 12); // snap to notes
+      type = 'square'; gain *= 0.42; freq = q(freq);
+      if (to) { const half = dur / 2; this.raw(freq, half, type, gain, null, at, 0.002); this.raw(q(to), half, type, gain, null, at + half, 0.002); return; }
+      attack = 0.002;
+    }
+    if (pack === 'scifi') { type = 'sawtooth'; gain *= 0.55; to = to || freq * 1.3; dur *= 1.15; filter = [500, 4200]; }
+    this.raw(freq, dur, type, gain, to, at, attack, filter);
+  },
+  raw(freq, dur, type, gain, to, at, attack, filter) {
     const c = this.ctx, t = c.currentTime + at;
     const o = c.createOscillator(), g = c.createGain();
     o.type = type;
@@ -360,9 +375,17 @@ const Sfx = {
     if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
     const peak = gain * this.vol * 0.5;
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(c.destination);
+    let src = o;
+    if (filter) {
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass'; f.Q.value = 9;
+      f.frequency.setValueAtTime(filter[0], t);
+      f.frequency.exponentialRampToValueAtTime(filter[1], t + dur * 0.7);
+      src = o.connect(f);
+    }
+    src.connect(g).connect(c.destination);
     o.start(t); o.stop(t + dur + 0.02);
   },
   play(name) {
@@ -384,6 +407,7 @@ const Sfx = {
         case 'restore': this.tone(330, 0.16, { type: 'triangle', gain: 0.12, to: 880 }); this.tone(1320, 0.12, { gain: 0.06, at: 0.13 }); break;
         case 'launch': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.18, { gain: 0.14, at: i * 0.07 })); break;
         case 'done': this.tone(880, 0.08, { gain: 0.14 }); this.tone(1319, 0.16, { gain: 0.12, at: 0.08 }); break;
+        case 'reward': [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.3, { gain: 0.1, at: i * 0.09 })); this.tone(2093, 0.6, { gain: 0.05, at: 0.36 }); break;
         case 'error': this.tone(240, 0.16, { type: 'square', gain: 0.07 }); this.tone(190, 0.2, { type: 'square', gain: 0.07, at: 0.12 }); break;
       }
     } catch { /* audio unavailable */ }
@@ -681,14 +705,6 @@ function renderProfile() {
   const p = S.profile;
   const name = (p && p.personaName) || 'Игрок';
   $('#profile-name').textContent = name;
-  const av = $('#avatar');
-  av.replaceChildren();
-  if (p && p.avatar) {
-    const img = h('img', { alt: '' });
-    img.onerror = () => { av.replaceChildren(name[0].toUpperCase()); };
-    img.src = p.avatar;
-    av.append(img);
-  } else av.textContent = name[0].toUpperCase();
   renderLevel();
 }
 function renderPill() {
@@ -1476,12 +1492,14 @@ const broLine = () => {
   return BRO_GREET[new Date().getDate() % BRO_GREET.length];
 };
 function broText(c) {
+  if (c.kind === 'week') return `Неделя: наиграй ${fmtTime(c.target)} в любые игры`;
   if (c.kind === 'first') return `Запусти ${c.name} впервые и сыграй ${c.target} мин`;
   if (c.kind === 'return') return `Вернись в ${c.name} на ${c.target} мин`;
   if (c.kind === 'ach') return `Получи достижение в ${c.name}`;
   return `Сыграй в ${c.name} ${c.target} мин`;
 }
-const broProg = (c) => (c.kind === 'ach' ? (c.done ? 'выполнено' : 'нужно 1 достижение') : `${c.progress} / ${c.target} мин`);
+const broProg = (c) => (c.kind === 'ach' ? (c.done ? 'выполнено' : 'нужно 1 достижение') : `${c.progress} / ${c.target} мин${c.kind === 'week' ? ' · до понедельника' : ''}`);
+const broAll = (b = S.bro) => (b ? [...(b.week ? [b.week] : []), ...b.challenges] : []);
 function broFace(size = 56, mood = '') {
   const el = document.createElementNS(SVGNS, 'svg');
   el.setAttribute('width', size); el.setAttribute('height', size); el.setAttribute('viewBox', '0 0 64 64');
@@ -1495,7 +1513,10 @@ function broFace(size = 56, mood = '') {
     <path d="M25 46 q7 5 14 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
   return el;
 }
-// avatar frames unlocked by level
+// =====================================================================
+// rewards unlocked by level: frames, badges, titles, accents, sounds, backgrounds, effects, Game Bro perks.
+// The highest level ever reached counts, so prestige never takes anything away.
+// =====================================================================
 const FRAMES = [
   { id: 'none', name: 'Обычная', lvl: 1 },
   { id: 'bronze', name: 'Бронзовая', lvl: 5 },
@@ -1503,54 +1524,279 @@ const FRAMES = [
   { id: 'gold', name: 'Золотая', lvl: 30 },
   { id: 'neon', name: 'Неоновая', lvl: 50 },
 ];
+const BADGES = [
+  { id: 'auto', name: 'Аватар Steam', lvl: 1, hint: 'или первая буква ника' },
+  { id: 'pad', name: 'Геймпад', lvl: 2, d: ['M7 6.5h10a4.5 4.5 0 0 1 4.4 5.2l-.7 4.1a2.7 2.7 0 0 1-4.8 1.2L14.4 15H9.6l-1.5 2a2.7 2.7 0 0 1-4.8-1.2l-.7-4.1A4.5 4.5 0 0 1 7 6.5z', 'M7.5 9.6v3.4', 'M5.8 11.3h3.4', 'M16 10.2h.01', 'M17.8 12.2h.01'] },
+  { id: 'bolt', name: 'Молния', lvl: 6, d: 'M13.5 2 4.5 13.5h6.5l-1 8.5 9-11.5h-6.5z', fill: true },
+  { id: 'crown', name: 'Корона', lvl: 10, d: 'M3 7.5l4.5 4 4.5-6.5 4.5 6.5 4.5-4-1.8 11H4.8z', fill: true },
+  { id: 'star', name: 'Звезда', lvl: 20, d: 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z', fill: true },
+  { id: 'flame', name: 'Пламя', lvl: 30, d: 'M12 2c.6 3.6 5.5 6.3 5.5 11.5a5.5 5.5 0 0 1-11 0c0-2.4 1.1-4.1 2.4-5.3.1 2.2 1 3.4 2.3 3.6-.4-3.7.2-6.6.8-9.8z', fill: true },
+  { id: 'diamond', name: 'Алмаз', lvl: 40, d: ['M6.5 3.5h11l4 5.5L12 21 2.5 9z', 'M2.5 9h19', 'M9 3.5 7.5 9 12 21l4.5-12L15 3.5'] },
+];
+const TITLES = [
+  { id: 'none', name: 'Без титула', lvl: 1, hint: 'только ник' },
+  { id: 'novice', name: 'Новичок', lvl: 1 },
+  { id: 'regular', name: 'Завсегдатай', lvl: 5 },
+  { id: 'gamer', name: 'Геймер', lvl: 10 },
+  { id: 'hunter', name: 'Охотник за трофеями', lvl: 15 },
+  { id: 'marathon', name: 'Марафонец', lvl: 20 },
+  { id: 'collector', name: 'Коллекционер', lvl: 25 },
+  { id: 'veteran', name: 'Ветеран', lvl: 30 },
+  { id: 'master', name: 'Мастер', lvl: 40 },
+  { id: 'legend', name: 'Легенда Lobby', lvl: 50 },
+];
+const SPECIAL_ACCENTS = [
+  { id: 'grad:sunset', name: 'Закат', lvl: 12, base: '#FF8A5B', grad: 'linear-gradient(90deg, #FF5F6D, #FFC371, #FF8A5B, #FF5F6D)' },
+  { id: 'grad:chrome', name: 'Хром', lvl: 18, base: '#D9DEE5', grad: 'linear-gradient(90deg, #8E9EAB, #F5F7FA, #9AA6B2, #FFFFFF, #8E9EAB)' },
+  { id: 'grad:aurora', name: 'Аврора', lvl: 25, base: '#5EE7C4', grad: 'linear-gradient(90deg, #43E97B, #38F9D7, #8B7CFF, #D77BF0, #43E97B)' },
+];
+const SFX_PACKS = [
+  { id: 'classic', name: 'Классика', lvl: 1, hint: 'стандартные звуки' },
+  { id: 'soft', name: 'Мягкие', lvl: 3 },
+  { id: '8bit', name: '8-бит', lvl: 10 },
+  { id: 'scifi', name: 'Sci-fi', lvl: 18 },
+];
+const AMBIENTS = [
+  { id: 'none', name: 'Без фона', lvl: 1, hint: 'чистый чёрный' },
+  { id: 'fog', name: 'Туман', lvl: 8 },
+  { id: 'particles', name: 'Частицы', lvl: 15 },
+  { id: 'aurora', name: 'Сияние', lvl: 25 },
+];
+const FOCUS_FX = [
+  { id: 'glow', name: 'Свечение', lvl: 1, hint: 'стандартная подсветка' },
+  { id: 'shine', name: 'Блик', lvl: 7 },
+  { id: 'sparks', name: 'Искры', lvl: 20 },
+];
+const LAUNCH_FX_LVL = 4;
+const PERKS = [
+  { lvl: 10, name: '+1 замена челленджа в день' },
+  { lvl: 20, name: 'Четвёртый челлендж в день' },
+  { lvl: 25, name: 'Недельный челлендж с двойным опытом' },
+  { lvl: 50, name: 'Престиж: начать с 1 уровня со звездой' },
+];
 const levelNow = () => (S.bro ? S.bro.level : 1);
-function frameFor(choice = S.settings.avatarFrame || 'auto', lv = levelNow()) {
+const unlockLv = () => (S.bro ? Math.max(S.bro.level, S.bro.peak || 1) : 1);
+const isOpen = (o) => unlockLv() >= o.lvl;
+// a saved choice that is not unlocked (or no longer exists) falls back to the default
+const chosen = (list, key, def) => { const o = list.find((x) => x.id === S.settings[key]); return o && isOpen(o) ? o.id : def; };
+
+function allRewards() {
+  const out = [];
+  const add = (list, kind, label) => list.forEach((o) => { if (o.lvl > 1) out.push({ ...o, kind, label }); });
+  add(FRAMES, 'frame', 'Рамка аватара');
+  add(BADGES, 'badge', 'Значок аватара');
+  add(TITLES, 'title', 'Титул');
+  add(SPECIAL_ACCENTS, 'accent', 'Особый цвет');
+  add(SFX_PACKS, 'sfx', 'Звуки интерфейса');
+  add(AMBIENTS, 'ambient', 'Живой фон');
+  add(FOCUS_FX, 'focus', 'Эффект выбора');
+  out.push({ id: 'launch', name: 'Анимация запуска игры', lvl: LAUNCH_FX_LVL, kind: 'launch', label: 'Эффект' });
+  PERKS.forEach((p) => out.push({ ...p, id: `perk${p.lvl}`, kind: 'perk', label: 'Game Bro' }));
+  return out.sort((a, b) => a.lvl - b.lvl);
+}
+const rewardsBetween = (from, to) => allRewards().filter((r) => r.lvl > from && r.lvl <= to);
+const nextReward = () => allRewards().find((r) => r.lvl > unlockLv());
+
+function frameFor(choice = S.settings.avatarFrame || 'auto', lv = unlockLv()) {
   if (choice === 'auto') return [...FRAMES].reverse().find((f) => lv >= f.lvl).id;
   const f = FRAMES.find((x) => x.id === choice);
   return f && lv >= f.lvl ? f.id : 'none';
 }
+function titleFor(choice = S.settings.title || 'auto') {
+  if (choice === 'auto') return [...TITLES].reverse().find((t) => t.id !== 'none' && isOpen(t));
+  const t = TITLES.find((x) => x.id === choice);
+  return t && isOpen(t) ? t : TITLES[1];
+}
+function badgeSvg(b, size) {
+  return icon(b.d, { size, fill: !!b.fill });
+}
+// the avatar: Steam picture / first letter, or a badge picked in settings
+function avatarEl(badgeId = chosen(BADGES, 'avatarIcon', 'auto')) {
+  const p = S.profile;
+  const name = (p && p.personaName) || 'Игрок';
+  const av = h('span', { class: 'avatar' });
+  const b = BADGES.find((x) => x.id === badgeId && x.d);
+  if (b) { av.classList.add('av-badge'); av.append(badgeSvg(b, 30)); return av; }
+  if (p && p.avatar) {
+    const img = h('img', { alt: '' });
+    img.onerror = () => { av.replaceChildren(name[0].toUpperCase()); };
+    img.src = p.avatar;
+    av.append(img);
+  } else av.textContent = name[0].toUpperCase();
+  return av;
+}
+function avatarPreview(frameId, size = 72, badgeId) {
+  return h('span', { class: `av-frame fr-${frameId}`, style: `--av:${size}px` }, avatarEl(badgeId));
+}
+const stars = (n) => (n > 5 ? `★×${n}` : '★'.repeat(n));
 function applyFrame() {
   const el = $('#av-frame');
-  if (el) el.className = `av-frame fr-${frameFor()}`;
+  if (!el) return;
+  el.className = `av-frame fr-${frameFor()}`;
+  const pr = (S.bro && S.bro.prestige) || 0;
+  const st = h('span', { class: 'av-stars', text: pr ? stars(pr) : '' });
+  el.replaceChildren(avatarEl(), st);
+  el.firstChild.id = 'avatar';
 }
-function avatarPreview(frameId, size = 72) {
-  const av = $('#avatar').cloneNode(true);
-  av.removeAttribute('id');
-  return h('span', { class: `av-frame fr-${frameId}`, style: `--av:${size}px` }, av);
+
+// accents: special ones are a gradient on fills plus a solid base colour for glows and text
+function accentInfo(c) {
+  const sp = SPECIAL_ACCENTS.find((a) => a.id === c);
+  if (sp) return { base: sp.base, grad: sp.grad, name: sp.name, special: sp };
+  return { base: c || ACCENTS[0], grad: null, name: accentName(c) };
 }
-function frameBox() {
+function applyAccent(c = S.settings.accent || ACCENTS[0]) {
+  let a = accentInfo(c);
+  if (a.special && !isOpen(a.special) && c === S.settings.accent) a = accentInfo(ACCENTS[0]);
+  const root = document.documentElement;
+  root.style.setProperty('--accent', a.base);
+  if (a.grad) { root.style.setProperty('--accent-grad', a.grad); root.classList.add('acc-grad'); } else { root.style.removeProperty('--accent-grad'); root.classList.remove('acc-grad'); }
+  try { localStorage.setItem('accent', a.base); } catch { /* ignore */ }
+}
+
+// live background behind everything
+const Ambient = {
+  kind: null, raf: 0, canvas: null,
+  set(kind) {
+    if (kind === this.kind) return;
+    this.kind = kind;
+    cancelAnimationFrame(this.raf);
+    const el = $('#ambient');
+    el.className = `amb-${kind}`;
+    el.replaceChildren();
+    if (kind === 'fog') el.append(h('i', { class: 'fog-a' }), h('i', { class: 'fog-b' }), h('i', { class: 'fog-c' }));
+    if (kind === 'aurora') el.append(h('i', { class: 'au-a' }), h('i', { class: 'au-b' }), h('i', { class: 'au-c' }));
+    if (kind === 'particles') this.particles(el);
+  },
+  particles(el) {
+    const cv = h('canvas', {});
+    el.append(cv);
+    const W = 1920, H = 1080;
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    const dots = Array.from({ length: 70 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: 0.8 + Math.random() * 2.2, v: 0.15 + Math.random() * 0.45, p: Math.random() * 6.28, a: 0.15 + Math.random() * 0.5 }));
+    let last = 0;
+    const tick = (t) => {
+      this.raf = requestAnimationFrame(tick);
+      if (t - last < 33) return; // ~30 fps is plenty for slow dust
+      last = t;
+      const col = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+      ctx.clearRect(0, 0, W, H);
+      for (const d of dots) {
+        d.y -= d.v; d.p += 0.01; d.x += Math.sin(d.p) * 0.3;
+        if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
+        ctx.globalAlpha = d.a * (0.6 + 0.4 * Math.sin(d.p * 2));
+        ctx.fillStyle = d.r > 2.4 ? col : '#ffffff';
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 6.283); ctx.fill();
+      }
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+};
+function applyCosmetics() {
+  applyAccent();
+  applyFrame();
+  Ambient.set(chosen(AMBIENTS, 'ambient', 'none'));
+  const fx = chosen(FOCUS_FX, 'focusFx', 'glow');
+  document.documentElement.classList.toggle('fx-shine', fx === 'shine');
+  document.documentElement.classList.toggle('fx-sparks', fx === 'sparks');
+}
+
+// generic picker for anything unlockable; `preview(o)` draws the option, `onTry(o)` previews it live
+function unlockBox({ title, note, opts, current, preview, onTry, onCancel, cols = 3, kind = 'unlock' }) {
   return new Promise((resolve) => {
-    const lv = levelNow();
-    const current = S.settings.avatarFrame || 'auto';
-    const opts = [{ id: 'auto', name: 'Авто', lvl: 1, hint: 'лучшая из открытых' }, ...FRAMES];
-    const grid = h('div', { class: 'fr-grid' }, ...opts.map((o) => {
+    const lv = unlockLv();
+    let done = false;
+    const grid = h('div', { class: 'fr-grid', style: `grid-template-columns:repeat(${cols}, 1fr)` }, ...opts.map((o, k) => {
       const locked = lv < o.lvl;
-      const shown = o.id === 'auto' ? frameFor('auto', lv) : o.id;
       return h('button', {
-        class: `fr-opt${locked ? ' locked' : ''}${o.id === current ? ' cur' : ''}`, nav: 'fr', 'aria-label': o.name,
+        class: `fr-opt${locked ? ' locked' : ''}${o.id === current ? ' cur' : ''}`, nav: `u${Math.floor(k / cols)}`, key: o.id, 'aria-label': o.name,
+        onfocus: () => { if (!done && onTry) onTry(o); },
         act: () => {
-          if (locked) { sound('bump'); toast(`Рамка «${o.name}» откроется на ${o.lvl} уровне`); return; }
+          if (locked) { sound('bump'); toast(`«${o.name}» откроется на ${o.lvl} уровне`); return; }
           finish(o.id);
         },
-      }, avatarPreview(shown, 72), h('b', { text: o.name }),
-      h('span', { text: locked ? `с ${o.lvl} уровня` : o.hint || (o.lvl > 1 ? `открыта с ${o.lvl} уровня` : 'всегда') }),
+      }, preview(o), h('b', { text: o.name }),
+      h('span', { text: locked ? `с ${o.lvl} уровня` : o.hint || (o.lvl > 1 ? `открыто с ${o.lvl} уровня` : 'всегда') }),
       locked ? h('span', { class: 'fr-lock' }, I.lock(16)) : null);
     }));
-    const box = h('div', { class: 'menu frames', role: 'dialog' },
-      h('h2', { text: 'Рамка аватара' }), h('p', { text: `Твой уровень: ${lv}. Новые рамки открываются на 5, 15, 30 и 50 уровне.` }), grid,
+    const box = h('div', { class: `menu frames ${kind}`, role: 'dialog' },
+      h('h2', { text: title }), h('p', { text: note || `Твой уровень: ${levelNow()}. Новое открывается с уровнем Game Bro.` }), grid,
       h('div', { class: 'sl-actions' }, h('button', { class: 'btn', nav: 'frb', act: () => finish(null) }, 'Отмена')));
     const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'frames', hints: [['A', 'Выбрать'], ['B', 'Отмена']] };
-    let done = false;
-    const finish = (v) => { if (done) return; done = true; popLayer(layer); resolve(v); };
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      if (v == null && onCancel) onCancel();
+      popLayer(layer);
+      resolve(v);
+    };
     layer.onBack = () => finish(null);
     layer.focusFirst = () => focus(grid.querySelector('.fr-opt.cur') || grid.firstChild);
     pushLayer(layer);
   });
 }
+const frameBox = () => unlockBox({
+  title: 'Рамка аватара', note: `Твой уровень: ${levelNow()}. Новые рамки открываются на 5, 15, 30 и 50 уровне.`,
+  opts: [{ id: 'auto', name: 'Авто', lvl: 1, hint: 'лучшая из открытых' }, ...FRAMES], current: S.settings.avatarFrame || 'auto',
+  preview: (o) => avatarPreview(o.id === 'auto' ? frameFor('auto') : o.id, 72),
+});
+const badgeBox = () => unlockBox({
+  title: 'Значок аватара', cols: 4, opts: BADGES, current: chosen(BADGES, 'avatarIcon', 'auto'),
+  preview: (o) => avatarPreview(frameFor(), 64, o.id),
+});
+const titleBoxPick = () => unlockBox({
+  title: 'Титул', note: 'Показывается под ником. «Авто» берёт самый высокий из открытых.', cols: 4,
+  opts: [{ id: 'auto', name: 'Авто', lvl: 1, hint: titleFor('auto').name }, ...TITLES], current: S.settings.title || 'auto',
+  preview: (o) => h('span', { class: 'tt-prev', text: o.id === 'auto' ? titleFor('auto').name : o.id === 'none' ? '—' : o.name }),
+});
+const sfxBox = () => {
+  const before = S.settings.sfxPack;
+  return unlockBox({
+    title: 'Звуки интерфейса', note: 'Наведи на набор, чтобы послушать', cols: 4, opts: SFX_PACKS, current: chosen(SFX_PACKS, 'sfxPack', 'classic'),
+    preview: (o) => h('span', { class: 'fx-prev snd' }, icon(['M4 9v6h4l5 4V5L8 9z', 'M16 9a4 4 0 0 1 0 6', 'M18.5 6.5a8 8 0 0 1 0 11'], { size: 30 })),
+    onTry: (o) => { S.settings.sfxPack = o.id; setTimeout(() => sound('select'), 30); },
+    onCancel: () => { S.settings.sfxPack = before; },
+  }).then((v) => { S.settings.sfxPack = before; return v; });
+};
+const ambientBox = () => unlockBox({
+  title: 'Живой фон', note: 'Фон за всем интерфейсом. Можно примерить, наведя на вариант.', cols: 4, opts: AMBIENTS, current: chosen(AMBIENTS, 'ambient', 'none'),
+  preview: (o) => h('span', { class: `fx-prev amb-prev ap-${o.id}` }),
+  onTry: (o) => Ambient.set(isOpen(o) ? o.id : chosen(AMBIENTS, 'ambient', 'none')),
+  onCancel: () => Ambient.set(chosen(AMBIENTS, 'ambient', 'none')),
+});
+const focusBox = () => unlockBox({
+  title: 'Эффект выбора', note: 'Как подсвечивается выбранная игра', opts: FOCUS_FX, current: chosen(FOCUS_FX, 'focusFx', 'glow'),
+  preview: (o) => h('span', { class: `fx-prev foc-prev fp-${o.id}` }, h('i')),
+});
+
+// "a new level" screen lists everything it unlocked
+function rewardIcon(r, size = 48) {
+  if (r.kind === 'frame') return avatarPreview(r.id, size - 10);
+  if (r.kind === 'badge') return avatarPreview('none', size - 10, r.id);
+  if (r.kind === 'accent') return h('span', { class: 'rw-ic', style: `background:${r.grad}` });
+  if (r.kind === 'ambient') return h('span', { class: `rw-ic amb-prev ap-${r.id}` });
+  const paths = {
+    title: ['M4 7h16', 'M4 12h10', 'M4 17h13'],
+    sfx: ['M4 9v6h4l5 4V5L8 9z', 'M16 9a4 4 0 0 1 0 6'],
+    focus: ['M4 8V4h4', 'M16 4h4v4', 'M20 16v4h-4', 'M8 20H4v-4'],
+    launch: 'M7 4l13 8-13 8z',
+  };
+  if (r.kind === 'perk') return h('span', { class: 'rw-ic perk' }, broFace(size - 14));
+  return h('span', { class: 'rw-ic' }, icon(paths[r.kind], { size: Math.round(size * 0.5), fill: r.kind === 'launch' }));
+}
+function rewardChip(r) {
+  return h('div', { class: 'rw-chip' }, rewardIcon(r, 52), h('span', { class: 'rw-txt' }, h('b', { text: r.kind === 'title' ? `«${r.name}»` : r.name }), h('span', { text: r.label })));
+}
 function renderLevel() {
   const b = S.bro;
-  applyFrame();
+  applyCosmetics();
+  const t = S.settings.title === 'none' ? null : titleFor();
+  $('#profile-title').textContent = t ? t.name : '';
+  $('#profile-title').hidden = !t;
   if (!b) return;
+  $('#prestige').hidden = !b.prestige;
+  $('#prestige').textContent = b.prestige ? stars(b.prestige) : '';
   $('#lvl-pill').textContent = `LV ${b.level}`;
   $('#xp-fill').style.width = `${Math.min(100, (b.into / b.need) * 100)}%`;
   $('#xp-text').textContent = `${b.into} / ${b.need} XP`;
@@ -1561,19 +1807,20 @@ function broCard(c, row) {
   if (g) { kids.push(placeholder(g), artImg(g.art.wide)); }
   kids.push(h('span', { class: 'bro-shade' }),
     h('span', { class: 'bro-body' },
-      h('span', { class: 'bro-xp', text: c.done ? '✓ выполнено' : `+${c.xp} XP` }),
+      h('span', { class: 'bro-xp', text: c.done ? '✓ выполнено' : `+${c.xp} XP${c.kind === 'week' ? ' · ×2' : ''}` }),
       h('b', { text: broText(c) }),
       h('span', { class: 'bro-prog' }, h('span', { class: 'ach-bar' }, h('span', { style: `width:${(c.progress / c.target) * 100}%` })), h('span', { text: broProg(c) }))));
+  if (c.kind === 'week') kids.unshift(h('span', { class: 'week-bg' }));
   return h('button', {
-    class: `tile bro-card${c.done ? ' done' : ''}`, nav: row, 'aria-label': broText(c),
-    act: () => { if (g) openGame(g.id); },
-    alt: c.done ? null : () => rerollBro(c),
+    class: `tile bro-card${c.done ? ' done' : ''}${c.kind === 'week' ? ' week' : ''}`, nav: row, 'aria-label': broText(c),
+    act: () => { if (g) openGame(g.id); else if (c.kind === 'week' && row !== 'bl') openBro(); },
+    alt: c.done || c.kind === 'week' ? null : () => rerollBro(c),
   }, ...kids);
 }
 function broBlock(block) {
   const b = S.bro;
   if (!b) return null;
-  const r = h('div', { class: 'row', 'data-scroll': 'x' }, ...b.challenges.map((c) => broCard(c, 'bro')));
+  const r = h('div', { class: 'row', 'data-scroll': 'x' }, ...broAll(b).map((c) => broCard(c, 'bro')));
   const head = h('div', { class: 'row-title bro-title' }, broFace(30), h('h2', { text: 'Game Bro' }), h('span', { text: broLine() }));
   return b.challenges.length ? h('div', { class: 'row-wrap' }, head, r) : h('div', { class: 'row-wrap' }, head);
 }
@@ -1593,6 +1840,7 @@ function openBro() {
     const b = S.bro;
     const keep = S.focused && root.contains(S.focused) ? S.focused.getAttribute('aria-label') : null;
     const list = h('div', { class: 'bro-list' }, ...b.challenges.map((c) => broCard(c, 'bl')));
+    const week = b.week ? h('div', { class: 'bro-list' }, broCard(b.week, 'bl')) : null;
     root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet bro-sheet', role: 'dialog' },
       h('div', { class: 'bro-hero' }, broFace(96),
         h('div', { class: 'bro-say' }, h('b', { text: 'Game Bro' }), h('span', { text: broLine() }))),
@@ -1602,6 +1850,7 @@ function openBro() {
           h('b', { text: `Уровень ${b.level}` }),
           h('span', { class: 'ach-bar' }, h('span', { style: `width:${(b.into / b.need) * 100}%` })),
           h('span', { class: 'bro-sub', text: `${b.into} из ${b.need} XP до уровня ${b.level + 1} · всего ${b.xp} XP` }))),
+      week ? h('div', { class: 'group-label', text: 'Челлендж недели · двойной опыт' }) : null, week,
       h('div', { class: 'group-label', text: `Челленджи на сегодня · замен осталось: ${b.rerolls}` }),
       b.challenges.length ? list : h('div', { class: 'bro-sub', text: 'Установи хоть одну игру, и Game Bro подберёт задания.' }),
       h('div', { class: 'bro-note', text: `Время засчитывается за игры, запущенные из Lobby. Выполнено челленджей: ${b.done}.` })));
@@ -1611,22 +1860,112 @@ function openBro() {
   layer.refresh();
   pushLayer(layer);
 }
+// profile card: who you are, your stats and every reward on the way to level 50
+const gameMinutes = (g) => g.minutes || 0;
+function openProfile() {
+  const root = h('div', {});
+  const layer = { el: root, kind: 'profile', hints: [['A', 'Выбрать'], ['B', 'Назад']] };
+  layer.refresh = () => {
+    const b = S.bro || { level: 1, into: 0, need: 100, xp: 0, done: 0, prestige: 0 };
+    const keep = S.focused && root.contains(S.focused) ? S.focused.dataset.key : null;
+    const p = S.profile;
+    const name = (p && p.personaName) || 'Игрок';
+    const t = S.settings.title === 'none' ? null : titleFor();
+    const games = S.games.filter((g) => !g.hidden);
+    const total = games.reduce((m, g) => m + gameMinutes(g), 0);
+    const fav = [...games].sort((x, y) => gameMinutes(y) - gameMinutes(x))[0];
+    const ach = games.reduce((m, g) => m + ((g.ach && g.ach.u) || 0), 0);
+    const stat = (v, l) => h('div', { class: 'pf-stat' }, h('b', { text: v }), h('span', { text: l }));
+    const lv = unlockLv();
+    const next = nextReward();
+    const open = {
+      frame: frameBox, badge: badgeBox, title: titleBoxPick, sfx: sfxBox, ambient: ambientBox, focus: focusBox,
+      accent: () => openSettingsAt('accent'), launch: () => openSettingsAt('launchfx'), perk: openBro,
+    };
+    const saveKey = { frame: 'avatarFrame', badge: 'avatarIcon', title: 'title', sfx: 'sfxPack', ambient: 'ambient', focus: 'focusFx' };
+    const pickFor = (r) => async () => {
+      if (r.lvl > lv) { sound('bump'); toast(`Откроется на ${r.lvl} уровне`); return; }
+      const v = await open[r.kind]();
+      if (typeof v === 'string' && saveKey[r.kind]) { S.settings = await api.setSettings({ [saveKey[r.kind]]: v }); sound('toggle'); renderLevel(); layer.refresh(); }
+    };
+    // rewards grouped by level
+    const byLv = new Map();
+    for (const r of allRewards()) { if (!byLv.has(r.lvl)) byLv.set(r.lvl, []); byLv.get(r.lvl).push(r); }
+    const list = [...byLv].map(([l, rs]) => h('div', { class: `pf-lv${l <= lv ? ' got' : ''}${next && next.lvl === l ? ' next' : ''}` },
+      h('span', { class: 'pf-lvn' }, h('b', { text: l }), h('span', { text: 'ур.' })),
+      h('div', { class: 'pf-rws' }, ...rs.map((r) => h('button', { class: `pf-rw${l <= lv ? '' : ' locked'}`, nav: `r${l}`, key: r.id + r.kind, act: pickFor(r) },
+        rewardIcon(r, 44), h('span', { class: 'rw-txt' }, h('b', { text: r.kind === 'title' ? `«${r.name}»` : r.name }), h('span', { text: r.label })),
+        l <= lv ? null : h('span', { class: 'fr-lock' }, I.lock(14)))))));
+    const big = avatarPreview(frameFor(), 112);
+    if (b.prestige) big.append(h('span', { class: 'av-stars', text: stars(b.prestige) }));
+    const scroll = h('div', { class: 'sheet-scroll', 'data-scroll': 'y' },
+      h('div', { class: 'pf-head' }, big,
+        h('div', { class: 'pf-who' },
+          t ? h('span', { class: 'eyebrow', text: t.name }) : null,
+          h('h1', { text: name }),
+          h('div', { class: 'pf-lvline' },
+            h('span', { class: 'lvl-pill', text: `LV ${b.level}` }),
+            b.prestige ? h('span', { class: 'prestige', text: `${stars(b.prestige)} престиж ${b.prestige}` }) : null,
+            h('span', { class: 'ach-bar' }, h('span', { style: `width:${(b.into / b.need) * 100}%` })),
+            h('span', { class: 'bro-sub', text: `${b.into} / ${b.need} XP` })))),
+      h('div', { class: 'acts pf-acts' },
+        h('button', { class: 'btn primary', nav: 'pa', key: 'bro', act: openBro }, 'Game Bro'),
+        h('button', { class: 'btn', nav: 'pa', key: 'look', act: () => openSettingsAt('frame') }, 'Оформление'),
+        b.canPrestige ? h('button', { class: 'btn gold', nav: 'pa', key: 'prestige', act: doPrestige }, 'Престиж ★') : null),
+      h('div', { class: 'pf-stats' },
+        stat(`${b.xp.toLocaleString('ru-RU')}`, 'опыта всего'),
+        stat(`${b.done}`, plural(b.done, 'челлендж выполнен', 'челленджа выполнено', 'челленджей выполнено')),
+        stat(fmtTime(total) === 'не запускалась' ? '0 ч' : fmtTime(total), 'в играх всего'),
+        stat(`${ach}`, plural(ach, 'достижение', 'достижения', 'достижений')),
+        stat(`${games.filter((g) => g.installed || g.source === 'custom').length}`, 'игр установлено'),
+        stat(fav && gameMinutes(fav) ? fav.name : '—', 'любимая игра')),
+      h('div', { class: 'group-label', text: next ? `Награды · следующая на ${next.lvl} уровне` : 'Награды · всё открыто' }),
+      h('div', { class: 'pf-list' }, ...list));
+    root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet profile-sheet', role: 'dialog' }, scroll));
+    if (keep) { const el = root.querySelector(`[data-key="${keep}"]`); if (el) focus(el, { scroll: false }); }
+  };
+  layer.focusFirst = () => focus(root.querySelector('[data-key="bro"]'));
+  layer.refresh();
+  pushLayer(layer);
+}
+function doPrestige() {
+  confirmBox('Престиж', 'Уровень начнётся заново с первого, а рядом с ником появится звезда. Все открытые награды и бонусы Game Bro останутся.', 'Начать заново', async () => {
+    const r = await api.broPrestige();
+    if (r.error) return toast(r.error, 'warn');
+    S.bro = r.state;
+    sound('launch'); setTimeout(() => sound('reward'), 400);
+    toast(`Престиж ${r.prestige}! Новый путь к 50 уровню начался`);
+    refreshAll();
+  });
+}
+// settings opened straight at one row (from the profile card)
+function openSettingsAt(key) {
+  openSettings();
+  requestAnimationFrame(() => {
+    const top = topLayer();
+    const el = top && top.el.querySelector(`[data-key="${key}"]`);
+    if (el) focus(el);
+  });
+}
 // a challenge finished: celebrate, and make a bigger deal of a new level
 function broCelebrate(ev) {
   const c = ev.challenge;
   const lv = ev.levelUp;
-  const box = h('div', { class: `menu bro-pop${lv ? ' lvup' : ''}`, role: 'dialog' },
+  const got = lv && ev.to > (ev.from || 0) ? rewardsBetween(ev.from || 0, ev.to) : [];
+  const box = h('div', { class: `menu bro-pop${lv ? ' lvup' : ''}${got.length ? ' rewards' : ''}`, role: 'dialog' },
     h('div', { class: 'bro-pop-face' }, broFace(84, 'happy')),
-    h('span', { class: 'eyebrow', text: lv ? 'Новый уровень' : 'Челлендж выполнен' }),
+    h('span', { class: 'eyebrow', text: lv ? 'Новый уровень' : c.kind === 'week' ? 'Челлендж недели выполнен' : 'Челлендж выполнен' }),
     h('h2', { text: lv ? `Уровень ${lv}!` : BRO_PRAISE[Math.floor(Math.random() * BRO_PRAISE.length)] }),
     h('p', { text: lv ? `Ты апнулся до ${lv} уровня! За «${broText(c)}» +${c.xp} XP` : `${broText(c)} — +${c.xp} XP` }),
-    lv && FRAMES.find((f) => f.lvl === lv) ? h('div', { class: 'bro-unlock' }, avatarPreview(FRAMES.find((f) => f.lvl === lv).id, 56),
-      h('span', { text: `Открыта рамка «${FRAMES.find((f) => f.lvl === lv).name}» — выбери её в настройках` })) : null,
-    h('div', { class: 'bro-pop-xp', text: `+${c.xp} XP` }),
-    h('div', { class: 'sl-actions' }, h('button', { class: 'btn primary', nav: 'bp', act: () => popLayer(layer) }, lv ? 'Круто!' : 'Отлично')));
+    got.length ? h('div', { class: 'rw-new' }, h('span', { class: 'eyebrow', text: got.length > 1 ? 'Новые награды' : 'Новая награда' }),
+      h('div', { class: 'rw-list' }, ...got.map((r, k) => { const el = rewardChip(r); el.style.setProperty('--i', k); return el; }))) : null,
+    got.length ? null : h('div', { class: 'bro-pop-xp', text: `+${c.xp} XP` }),
+    h('div', { class: 'sl-actions' },
+      h('button', { class: 'btn primary', nav: 'bp', act: () => popLayer(layer) }, lv ? 'Круто!' : 'Отлично'),
+      got.length ? h('button', { class: 'btn', nav: 'bp', act: () => { popLayer(layer); openProfile(); } }, 'Все награды') : null));
   const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'bropop', hints: [['A', 'Закрыть']] };
   pushLayer(layer);
-  if (lv) { sound('launch'); setTimeout(() => sound('done'), 450); } else sound('done');
+  if (lv) { sound('launch'); setTimeout(() => sound('done'), 450); if (got.length) setTimeout(() => sound('reward'), 900); } else sound('done');
 }
 api.onBro((d) => {
   if (d.state) S.bro = d.state;
@@ -1899,7 +2238,7 @@ function openSettings() {
   const layer = { el: root, kind: 'settings', hints: [['A', 'Изменить'], ['B', 'Закрыть']] };
   const set = async (patch, resync) => {
     S.settings = await api.setSettings(patch);
-    applyAccent();
+    applyCosmetics();
     layer.refresh();
     if (resync) doSync();
   };
@@ -1911,7 +2250,8 @@ function openSettings() {
       value && value.nodeType ? value : h('span', { class: 'v', text: value || '' }));
     const tog = (on) => h('span', { class: `toggle${on ? ' on' : ''}` });
     const masked = st.steamKey ? `••••••••${st.steamKey.slice(-4)}` : 'не задан';
-    const sw = h('span', { class: 'swatches' }, h('span', { class: 'v', text: accentName(st.accent) }), h('span', { class: 'swatch sel', style: `background:${st.accent || ACCENTS[0]}` }));
+    const ai = accentInfo(st.accent || ACCENTS[0]);
+    const sw = h('span', { class: 'swatches' }, h('span', { class: 'v', text: ai.name }), h('span', { class: 'swatch sel', style: `background:${ai.grad || ai.base}` }));
     const scroll = h('div', { class: 'sheet-scroll', 'data-scroll': 'y' },
       h('div', { class: 'group-label', text: 'Steam' }),
       row('sync', 'Синхронизировать сейчас', S.lastSync ? `Последняя: ${new Date(S.lastSync).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Ещё не выполнялась', S.syncing ? 'идёт…' : '', doSync),
@@ -1941,11 +2281,20 @@ function openSettings() {
         const v = await osk({ title: 'Ключ SteamGridDB (steamgriddb.com → Preferences → API), можно Ctrl+V', value: st.sgdbKey });
         if (v != null) set({ sgdbKey: v.trim() });
       }),
-      h('div', { class: 'group-label', text: 'Интерфейс' }),
+      h('div', { class: 'group-label', text: 'Профиль' }),
       row('frame', 'Рамка аватара', 'Открываются с уровнем Game Bro', h('span', { class: 'v', text: (FRAMES.find((f) => f.id === frameFor()) || FRAMES[0]).name + ((st.avatarFrame || 'auto') === 'auto' ? ' · авто' : '') }), async () => {
         const v = await frameBox();
-        if (v) { await set({ avatarFrame: v }); applyFrame(); sound('toggle'); }
+        if (v) { await set({ avatarFrame: v }); renderLevel(); sound('toggle'); }
       }),
+      row('badge', 'Значок аватара', 'Вместо аватара Steam', BADGES.find((x) => x.id === chosen(BADGES, 'avatarIcon', 'auto')).name, async () => {
+        const v = await badgeBox();
+        if (v) { await set({ avatarIcon: v }); renderLevel(); sound('toggle'); }
+      }),
+      row('title', 'Титул', 'Подпись под ником', st.title === 'none' ? 'без титула' : titleFor().name + ((st.title || 'auto') === 'auto' ? ' · авто' : ''), async () => {
+        const v = await titleBoxPick();
+        if (v) { await set({ title: v }); renderLevel(); sound('toggle'); }
+      }),
+      h('div', { class: 'group-label', text: 'Интерфейс' }),
       row('accent', 'Цвет акцента', 'Кнопки, рамка выбора, свечение', sw, async () => {
         const c = await colorBox(st.accent || ACCENTS[0]);
         if (c && c.toLowerCase() !== (st.accent || '').toLowerCase()) await set({ accent: c });
@@ -1968,6 +2317,21 @@ function openSettings() {
         S.settings.sfxVolume = before;
         if (v != null && v !== before) { await set({ sfxVolume: v }); sound('toggle'); }
       }),
+      row('sfxpack', 'Набор звуков', 'Новые открываются с уровнем', SFX_PACKS.find((x) => x.id === chosen(SFX_PACKS, 'sfxPack', 'classic')).name, async () => {
+        const v = await sfxBox();
+        if (v) { await set({ sfxPack: v }); sound('toggle'); }
+      }),
+      row('ambient', 'Живой фон', 'Туман, частицы или сияние за интерфейсом', AMBIENTS.find((x) => x.id === chosen(AMBIENTS, 'ambient', 'none')).name, async () => {
+        const v = await ambientBox();
+        if (v) { await set({ ambient: v }); sound('toggle'); }
+      }),
+      row('focusfx', 'Эффект выбора', 'Как подсвечивается выбранная игра', FOCUS_FX.find((x) => x.id === chosen(FOCUS_FX, 'focusFx', 'glow')).name, async () => {
+        const v = await focusBox();
+        if (v) { await set({ focusFx: v }); sound('toggle'); }
+      }),
+      row('launchfx', 'Анимация запуска игры', unlockLv() >= LAUNCH_FX_LVL ? 'Обложка раскрывается на весь экран' : `Откроется на ${LAUNCH_FX_LVL} уровне`,
+        unlockLv() >= LAUNCH_FX_LVL ? tog(st.launchFx) : h('span', { class: 'v' }, I.lock(16)),
+        () => (unlockLv() >= LAUNCH_FX_LVL ? set({ launchFx: !st.launchFx }) : (sound('bump'), toast(`Анимация запуска откроется на ${LAUNCH_FX_LVL} уровне`)))),
       row('full', 'Полноэкранный режим', 'Можно переключать клавишей F11', tog(st.fullscreen), () => set({ fullscreen: !st.fullscreen })),
       row('min', 'Сворачивать при запуске игры', 'Lobby вернётся, когда игра закроется', tog(st.minimizeOnLaunch), () => set({ minimizeOnLaunch: !st.minimizeOnLaunch })),
       row('auto', 'Запускать вместе с Windows', 'Стартует в фоне, без окна', tog(st.autostart), () => set({ autostart: !st.autostart })),
@@ -2005,10 +2369,6 @@ async function setScale(v) {
     stage.classList.remove('rescale');
   });
 }
-function applyAccent(c = S.settings.accent || ACCENTS[0]) {
-  document.documentElement.style.setProperty('--accent', c);
-  try { localStorage.setItem('accent', S.settings.accent || ACCENTS[0]); } catch { /* ignore */ }
-}
 // accent picker: the whole interface previews the colour under the cursor; A keeps it, B goes back
 function colorBox(current) {
   return new Promise((resolve) => {
@@ -2017,16 +2377,29 @@ function colorBox(current) {
     const grid = h('div', { class: 'cp-grid' });
     let done = false;
     let pick = current;
-    const show = (c) => { applyAccent(c); name.textContent = accentName(c); name.style.color = c; };
+    const show = (c) => {
+      const a = accentInfo(c);
+      applyAccent(c);
+      name.textContent = a.special && !isOpen(a.special) ? `${a.name} · с ${a.special.lvl} уровня` : a.name;
+      name.style.color = a.base;
+    };
     ACCENT_LIST.forEach(([c, n], k) => {
       grid.append(h('button', {
         class: `cp-sw${c.toLowerCase() === String(current).toLowerCase() ? ' cur' : ''}`, nav: `c${Math.floor(k / cols)}`, key: c,
         'aria-label': n, style: `--c:${c}`, onfocus: () => { if (!done) { pick = c; show(c); } }, act: () => finish(c),
       }));
     });
+    // special accents: try them on any time, keep them once unlocked
+    const special = h('div', { class: 'cp-special' }, ...SPECIAL_ACCENTS.map((a) => h('button', {
+      class: `cp-sw grad${a.id === current ? ' cur' : ''}${isOpen(a) ? '' : ' locked'}`, nav: 'cs', key: a.id, 'aria-label': a.name,
+      style: `--c:${a.grad};--cc:${a.base}`,
+      onfocus: () => { if (!done) { pick = isOpen(a) ? a.id : current; show(a.id); } },
+      act: () => { if (isOpen(a)) finish(a.id); else { sound('bump'); toast(`«${a.name}» откроется на ${a.lvl} уровне — пока можно только примерить`); } },
+    }, isOpen(a) ? null : I.lock(18))));
     const box = h('div', { class: 'menu colors', role: 'dialog' },
       h('h2', { text: 'Цвет акцента' }), h('p', { text: 'Весь интерфейс сразу примеряет выбранный цвет' }),
       name, grid,
+      h('div', { class: 'group-label cp-label', text: 'Особые · открываются с уровнем' }), special,
       h('div', { class: 'sl-actions' },
         h('button', { class: 'btn primary', nav: 'cpb', key: 'ok', act: () => finish(pick) }, 'Готово'),
         h('button', { class: 'btn', nav: 'cpb', key: 'cancel', act: () => finish(null) }, 'Отмена')));
@@ -2039,7 +2412,7 @@ function colorBox(current) {
       resolve(c);
     };
     layer.onBack = () => finish(null);
-    layer.focusFirst = () => focus(grid.querySelector('.cp-sw.cur') || grid.firstChild);
+    layer.focusFirst = () => focus(box.querySelector('.cp-sw.cur') || grid.firstChild);
     show(current);
     pushLayer(layer);
   });
@@ -2154,7 +2527,33 @@ async function launch(id) {
   if (!r.ok) { toast(r.error || 'Не удалось запустить', 'warn'); return; }
   if (r.installing) { toast(`Подтверди установку «${g.name}» в окне Steam — прогресс будет здесь`); return; }
   sound('launch');
+  launchFx(g);
   if (r.untracked) toast(`«${g.name}» запущена. Время не учитывается — укажи процесс игры на её странице.`);
+}
+
+// the cover opens up from the selected tile to the whole screen, then hands over to the running dialog
+async function launchFx(g) {
+  if (unlockLv() < LAUNCH_FX_LVL || S.settings.launchFx === false) return;
+  const stage = $('#stage');
+  const sr = stage.getBoundingClientRect();
+  const sc = S.scale || 1;
+  const W = stage.offsetWidth, H = stage.offsetHeight;
+  const fr = S.focused && S.focused.isConnected ? S.focused.getBoundingClientRect() : null;
+  const r = fr ? { l: (fr.left - sr.left) / sc, t: (fr.top - sr.top) / sc, w: fr.width / sc, h: fr.height / sc } : { l: W * 0.3, t: H * 0.3, w: W * 0.4, h: H * 0.4 };
+  const art = h('div', { class: 'lfx-art' });
+  const el = h('div', { class: 'lfx', 'aria-hidden': 'true' }, art, h('div', { class: 'lfx-shade' }),
+    h('div', { class: 'lfx-txt' }, h('span', { class: 'eyebrow', text: 'Запуск' }), h('b', { text: g.customName || g.name }), h('span', { class: 'lfx-bar' }, h('span'))));
+  stage.append(el);
+  const url = await firstOk([...(g.art.hero || []), ...(g.art.wide || [])]);
+  if (url) art.style.backgroundImage = `url("${url.replace(/"/g, '%22')}")`;
+  else art.style.background = PALETTE[hash(g.name) % PALETTE.length][0];
+  const from = `inset(${r.t}px ${W - r.l - r.w}px ${H - r.t - r.h}px ${r.l}px round 14px)`;
+  el.animate([{ clipPath: from }, { clipPath: 'inset(0px 0px 0px 0px round 0px)' }], { duration: 520, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+  art.animate([{ transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 2200, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'both' });
+  setTimeout(() => {
+    const out = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, easing: 'ease', fill: 'both' });
+    out.onfinish = () => el.remove();
+  }, 1900);
 }
 
 // running-game dialog
@@ -2242,7 +2641,7 @@ async function boot() {
   api.updateGet().then((u) => { S.version = u.current; if (u.info) S.update = u.info; });
   $('#btn-search')._act = openSearch;
   $('#btn-settings')._act = openSettings;
-  $('#profile')._act = openBro;
+  $('#profile')._act = openProfile;
   S.bro = await api.broGet();
   renderTabs(); renderProfile(); tickClock();
   setInterval(tickClock, 1000);

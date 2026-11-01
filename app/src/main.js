@@ -39,6 +39,7 @@ const DEFAULTS = {
   fullscreen: true, minimizeOnLaunch: true, autostart: false,
   sfxVolume: 50, uiScale: 100, sgdbKey: '',
   background: true, guideButton: true, autoUpdate: true, avatarFrame: 'auto',
+  avatarIcon: 'auto', title: 'auto', sfxPack: 'classic', ambient: 'none', focusFx: 'glow', launchFx: true,
 };
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -789,6 +790,7 @@ ipcMain.handle('update:install', () => {
 });
 ipcMain.handle('bro:get', () => bro.view());
 ipcMain.handle('bro:reroll', (_e, id) => ({ ...bro.reroll(id), state: bro.view() }));
+ipcMain.handle('bro:prestige', () => ({ ...bro.prestige(), state: bro.view() }));
 ipcMain.handle('ach:game', (_e, id, force) => achForGame(id, !!force));
 ipcMain.handle('ach:all', (_e, force) => achSweep(!!force));
 ipcMain.handle('sgdb:search', wrap(sgdbSearch));

@@ -611,3 +611,131 @@ button { font: inherit; color: inherit; }
 .fr-opt.locked b { color: #8a8a8a; }
 .fr-lock { position: absolute; top: 12px; right: 12px; color: #8a8a8a; }
 .bro-unlock { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 14px; background: #161616; font-size: 15px; color: var(--text-2); text-align: left; }
+
+/* ---------- level rewards ---------- */
+.profile-title { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: -3px 0 -1px; white-space: nowrap; }
+.prestige { font-size: 13px; font-weight: 700; color: #FFD45A; text-shadow: 0 0 8px rgba(255, 200, 60, .6); white-space: nowrap; }
+.av-stars { display: none; }
+.av-frame.fr-neon .av-stars:not(:empty), .pf-head .av-stars { display: block; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); z-index: 2; padding: 0 5px; border-radius: 999px; background: #0b0b0b;
+  font-size: 10px; line-height: 14px; letter-spacing: 1px; color: #FFD45A; text-shadow: 0 0 6px rgba(255, 200, 60, .8); white-space: nowrap; }
+.pf-head .av-stars { font-size: 15px; line-height: 20px; bottom: -10px; padding: 0 8px; }
+.avatar.av-badge { background: radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--accent) 55%, #fff) 0%, var(--accent) 42%, color-mix(in srgb, var(--accent) 45%, #000) 100%); color: #0a0a0a; }
+.avatar.av-badge svg { width: 58%; height: 58%; filter: drop-shadow(0 1px 0 rgba(255,255,255,.35)); }
+
+/* special accents: gradients flow across fills */
+html.acc-grad .btn.primary, html.acc-grad .lvl-pill, html.acc-grad .xp-bar > span, html.acc-grad .toggle.on, html.acc-grad .sl-fill,
+html.acc-grad .bro-lv, html.acc-grad .bro-prog .ach-bar > span, html.acc-grad .bro-lvtxt .ach-bar > span, html.acc-grad .dl .dl-fill, html.acc-grad .key.go,
+html.acc-grad .pf-lvline .ach-bar > span, html.acc-grad .tab.active {
+  background-image: var(--accent-grad); background-size: 300% 100%; animation: acc-flow 7s linear infinite; }
+html.acc-grad .tab.active { color: #000; }
+html.acc-grad .eyebrow, html.acc-grad .bro-pop-xp, html.acc-grad .profile-title {
+  background-image: var(--accent-grad); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: acc-flow 7s linear infinite; }
+@keyframes acc-flow { to { background-position: 300% 0; } }
+.cp-special { display: flex; justify-content: center; gap: 26px; padding: 6px 0 4px; }
+.cp-label { text-align: center; margin-top: 12px; }
+.cp-sw.grad { background: var(--c); background-size: 200% 100%; animation: acc-flow 5s linear infinite; display: flex; align-items: center; justify-content: center; color: #000; }
+.cp-sw.grad.locked { filter: saturate(.55) brightness(.75); }
+.cp-sw.grad.is-focused { animation: acc-flow 5s linear infinite; box-shadow: 0 0 0 4px #000, 0 0 0 7px #fff, 0 0 26px 6px color-mix(in srgb, var(--cc) 60%, transparent) !important; }
+
+/* live backgrounds */
+#ambient { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#ambient i { position: absolute; display: block; border-radius: 50%; will-change: transform; }
+#ambient canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .8; }
+.amb-fog .fog-a { width: 1400px; height: 900px; left: -300px; bottom: -420px; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 16%, transparent), transparent); animation: drift-a 38s ease-in-out infinite alternate; }
+.amb-fog .fog-b { width: 1200px; height: 800px; right: -260px; bottom: -300px; background: radial-gradient(closest-side, rgba(255,255,255,.07), transparent); animation: drift-b 46s ease-in-out infinite alternate; }
+.amb-fog .fog-c { width: 1000px; height: 600px; left: 30%; bottom: -380px; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 10%, transparent), transparent); animation: drift-a 52s ease-in-out -20s infinite alternate-reverse; }
+@keyframes drift-a { to { transform: translate(380px, -120px) scale(1.15); } }
+@keyframes drift-b { to { transform: translate(-420px, -160px) scale(1.2); } }
+.amb-aurora i { width: 1800px; height: 520px; left: -100px; filter: blur(20px); opacity: .5; }
+.amb-aurora .au-a { bottom: -120px; background: radial-gradient(closest-side, rgba(67, 233, 123, .35), transparent); animation: aurora 24s ease-in-out infinite alternate; }
+.amb-aurora .au-b { bottom: -60px; left: 300px; background: radial-gradient(closest-side, rgba(139, 124, 255, .38), transparent); animation: aurora 31s ease-in-out -8s infinite alternate-reverse; }
+.amb-aurora .au-c { bottom: -200px; left: -500px; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 35%, transparent), transparent); animation: aurora 27s ease-in-out -14s infinite alternate; }
+@keyframes aurora { 0% { transform: translateX(0) skewX(-12deg) scaleY(.8); } 50% { transform: translateX(260px) skewX(10deg) scaleY(1.15); } 100% { transform: translateX(-180px) skewX(-6deg) scaleY(.95); } }
+#stage.overlay-open #ambient { opacity: .5; }
+#ambient { transition: opacity 300ms; }
+
+/* focus effects */
+html.fx-shine .tile.is-focused::before { animation: sweep-loop 3.2s cubic-bezier(.3,.6,.2,1) 80ms infinite both;
+  background: linear-gradient(105deg, transparent 28%, rgba(255,255,255,0.34) 47%, rgba(255,255,255,0.08) 55%, transparent 68%); }
+@keyframes sweep-loop { 0% { opacity: 1; transform: translateX(-110%); } 30%, 100% { opacity: 1; transform: translateX(110%); } }
+@property --spark { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+html.fx-sparks .tile.is-focused:not(.busy)::after { content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none; border-radius: inherit; padding: 3px;
+  background: conic-gradient(from var(--spark), transparent 0deg, transparent 290deg, color-mix(in srgb, var(--accent) 80%, #fff) 340deg, #fff 356deg, transparent 360deg),
+    conic-gradient(from calc(var(--spark) + 180deg), transparent 0deg, transparent 300deg, var(--accent) 345deg, #fff 358deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: spark-run 2.4s linear infinite; filter: drop-shadow(0 0 4px #fff); }
+@keyframes spark-run { to { --spark: 360deg; } }
+
+/* pickers */
+.menu.frames.unlock { width: 900px; }
+.tt-prev { min-height: 64px; display: flex; align-items: center; padding: 0 14px; font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); text-align: center; }
+.fx-prev { width: 120px; height: 72px; border-radius: 12px; background: #0a0a0a; display: flex; align-items: center; justify-content: center; color: var(--accent); position: relative; overflow: hidden; }
+.amb-prev.ap-none { background: #050505; }
+.amb-prev.ap-fog { background: radial-gradient(80% 70% at 20% 100%, color-mix(in srgb, var(--accent) 35%, transparent), transparent), radial-gradient(70% 60% at 90% 100%, rgba(255,255,255,.14), transparent), #050505; }
+.amb-prev.ap-particles { background: radial-gradient(2px 2px at 20% 30%, #fff, transparent), radial-gradient(2px 2px at 60% 70%, var(--accent), transparent), radial-gradient(1.5px 1.5px at 80% 25%, #fff, transparent), radial-gradient(2px 2px at 35% 80%, #fff, transparent), radial-gradient(2.5px 2.5px at 75% 50%, var(--accent), transparent), radial-gradient(1.5px 1.5px at 45% 45%, #fff, transparent), #050505; }
+.amb-prev.ap-aurora { background: radial-gradient(90% 60% at 30% 100%, rgba(67, 233, 123, .5), transparent), radial-gradient(80% 60% at 75% 100%, rgba(139, 124, 255, .55), transparent), #050505; }
+.foc-prev i { width: 70px; height: 44px; border-radius: 8px; background: #2a2a2a; box-shadow: 0 0 0 3px #fff, 0 0 14px 2px var(--glow-hi); position: relative; overflow: hidden; }
+.foc-prev.fp-shine i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.55) 48%, transparent 66%); animation: sweep-loop 2.4s ease infinite; }
+.foc-prev.fp-sparks i::after { content: ''; position: absolute; inset: 0; border-radius: 8px; padding: 2px; background: conic-gradient(from var(--spark), transparent 0 290deg, #fff 350deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: spark-run 2s linear infinite; }
+
+/* new rewards on level up */
+.menu.bro-pop.rewards { width: 680px; }
+.rw-new { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }
+.rw-list { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rw-list > .rw-chip:only-child { grid-column: 1 / -1; justify-self: center; min-width: 50%; }
+.rw-chip { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 14px; background: #161616; text-align: left; animation: rise 420ms cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(500ms + var(--i, 0) * 110ms);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.rw-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rw-txt b { font-size: 16px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rw-txt span { font-size: 13px; color: var(--text-3); }
+.rw-ic { flex: none; width: 44px; height: 44px; border-radius: 12px; background: #222; color: var(--accent); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rw-chip .rw-ic { width: 52px; height: 52px; }
+.rw-ic.perk { background: #1a1a1a; }
+
+/* profile card */
+.sheet.profile-sheet { width: 980px; padding-top: 72px; }
+.pf-head { display: flex; align-items: center; gap: 32px; padding: 10px 4px 6px; }
+.pf-head > .av-frame { overflow: visible; }
+.pf-who { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pf-who h1 { margin: 0; font-size: 44px; line-height: 1.1; }
+.pf-lvline { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+.pf-lvline .lvl-pill { font-size: 15px; padding: 3px 10px; }
+.pf-lvline .ach-bar { flex: 1; height: 8px; max-width: 320px; }
+.pf-lvline .ach-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.pf-acts { margin: 6px 0 4px; }
+.btn.gold { background: linear-gradient(135deg, #8a5c0e, #e0b040 30%, #fff2b8 50%, #c8901f 70%, #ffe08a); color: #1a1000; font-weight: 700; }
+.pf-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pf-stat { padding: 16px 18px; border-radius: 14px; background: #141414; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pf-stat b { font-family: var(--display); font-weight: 800; font-size: 26px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-stat span { font-size: 14px; color: var(--text-3); }
+.pf-list { display: flex; flex-direction: column; gap: 10px; }
+.pf-lv { display: flex; gap: 16px; align-items: stretch; }
+.pf-lvn { flex: none; width: 64px; border-radius: 14px; background: #141414; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-3); }
+.pf-lvn b { font-family: var(--display); font-weight: 800; font-size: 24px; line-height: 1; }
+.pf-lvn span { font-size: 12px; }
+.pf-lv.got .pf-lvn { background: color-mix(in srgb, var(--accent) 20%, #141414); color: var(--accent); }
+.pf-lv.next .pf-lvn { box-shadow: inset 0 0 0 2px var(--accent); color: #fff; }
+.pf-rws { flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.pf-rw { position: relative; display: flex; align-items: center; gap: 14px; padding: 10px 14px; border: 0; border-radius: 14px; background: #141414; color: var(--text); text-align: left; min-width: 0; transition: transform 200ms cubic-bezier(.34,1.56,.64,1), background 160ms; }
+.pf-rw.is-focused { background: #1E1E1E; transform: scale(1.02); }
+.pf-rw.locked > .rw-ic, .pf-rw.locked > .av-frame { filter: grayscale(1) brightness(.5); }
+.pf-rw.locked .rw-txt b { color: #8a8a8a; }
+.pf-rw .fr-lock { top: 50%; margin-top: -7px; right: 14px; }
+
+/* game launch */
+.lfx { position: absolute; inset: 0; z-index: 50; pointer-events: none; overflow: hidden; background: #000; }
+.lfx-art { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.lfx-shade { position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.25) 45%, rgba(0,0,0,.1) 100%), radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(0,0,0,.65)); }
+.lfx-txt { position: absolute; left: 120px; right: 120px; bottom: 120px; display: flex; flex-direction: column; gap: 10px; animation: rise 500ms cubic-bezier(.2,.8,.2,1) 260ms both; }
+.lfx-txt b { font-family: var(--display); font-weight: 800; font-size: 72px; line-height: 1.05; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); }
+.lfx-bar { width: 360px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; margin-top: 10px; }
+.lfx-bar > span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; animation: lfx-fill 1.5s cubic-bezier(.4,0,.2,1) 300ms forwards; }
+html.acc-grad .lfx-bar > span { background-image: var(--accent-grad); }
+@keyframes lfx-fill { to { width: 100%; } }
+
+/* weekly challenge card */
+.bro-card.week .week-bg { position: absolute; inset: 0; background: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--accent) 45%, transparent), transparent 60%), linear-gradient(135deg, #1a1a1a, #0d0d0d); }
+.bro-card.week .bro-shade { background: none; }
+.bro-card.week .bro-xp { background: var(--accent); color: #000; }
+@media (prefers-reduced-motion: reduce) { #ambient i, #ambient canvas { animation: none; } html.fx-sparks .tile.is-focused::after { animation: none; } }
