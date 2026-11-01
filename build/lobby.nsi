@@ -35,8 +35,8 @@ VIAddVersionKey "LegalCopyright" ""
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
-!define MUI_ICON "lobby.ico"
-!define MUI_UNICON "lobby.ico"
+!define MUI_ICON "icon.ico"
+!define MUI_UNICON "icon.ico"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "welcome.bmp"
 !define MUI_UNWELCOMEFINISHPAGE_BITMAP "welcome.bmp"
 !define MUI_ABORTWARNING
