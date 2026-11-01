@@ -380,6 +380,8 @@ const Sfx = {
         case 'key': this.tone(1600, 0.025, { type: 'square', gain: 0.04 }); break;
         case 'toggle': this.tone(1050, 0.05, { type: 'triangle', gain: 0.14 }); break;
         case 'boot': [392, 587, 784].forEach((f, i) => this.tone(f, 0.75, { gain: 0.09, at: 0.18 + i * 0.4 })); this.tone(1568, 1, { gain: 0.04, at: 1.5 }); break;
+        case 'minimize': this.tone(880, 0.16, { type: 'triangle', gain: 0.12, to: 330 }); this.tone(1320, 0.1, { gain: 0.05, to: 660, at: 0.02 }); break;
+        case 'restore': this.tone(330, 0.16, { type: 'triangle', gain: 0.12, to: 880 }); this.tone(1320, 0.12, { gain: 0.06, at: 0.13 }); break;
         case 'launch': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.18, { gain: 0.14, at: i * 0.07 })); break;
         case 'done': this.tone(880, 0.08, { gain: 0.14 }); this.tone(1319, 0.16, { gain: 0.12, at: 0.08 }); break;
         case 'error': this.tone(240, 0.16, { type: 'square', gain: 0.07 }); this.tone(190, 0.2, { type: 'square', gain: 0.07, at: 0.12 }); break;
@@ -1493,8 +1495,61 @@ function broFace(size = 56, mood = '') {
     <path d="M25 46 q7 5 14 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
   return el;
 }
+// avatar frames unlocked by level
+const FRAMES = [
+  { id: 'none', name: 'Обычная', lvl: 1 },
+  { id: 'bronze', name: 'Бронзовая', lvl: 5 },
+  { id: 'silver', name: 'Серебряная', lvl: 15 },
+  { id: 'gold', name: 'Золотая', lvl: 30 },
+  { id: 'neon', name: 'Неоновая', lvl: 50 },
+];
+const levelNow = () => (S.bro ? S.bro.level : 1);
+function frameFor(choice = S.settings.avatarFrame || 'auto', lv = levelNow()) {
+  if (choice === 'auto') return [...FRAMES].reverse().find((f) => lv >= f.lvl).id;
+  const f = FRAMES.find((x) => x.id === choice);
+  return f && lv >= f.lvl ? f.id : 'none';
+}
+function applyFrame() {
+  const el = $('#av-frame');
+  if (el) el.className = `av-frame fr-${frameFor()}`;
+}
+function avatarPreview(frameId, size = 72) {
+  const av = $('#avatar').cloneNode(true);
+  av.removeAttribute('id');
+  return h('span', { class: `av-frame fr-${frameId}`, style: `--av:${size}px` }, av);
+}
+function frameBox() {
+  return new Promise((resolve) => {
+    const lv = levelNow();
+    const current = S.settings.avatarFrame || 'auto';
+    const opts = [{ id: 'auto', name: 'Авто', lvl: 1, hint: 'лучшая из открытых' }, ...FRAMES];
+    const grid = h('div', { class: 'fr-grid' }, ...opts.map((o) => {
+      const locked = lv < o.lvl;
+      const shown = o.id === 'auto' ? frameFor('auto', lv) : o.id;
+      return h('button', {
+        class: `fr-opt${locked ? ' locked' : ''}${o.id === current ? ' cur' : ''}`, nav: 'fr', 'aria-label': o.name,
+        act: () => {
+          if (locked) { sound('bump'); toast(`Рамка «${o.name}» откроется на ${o.lvl} уровне`); return; }
+          finish(o.id);
+        },
+      }, avatarPreview(shown, 72), h('b', { text: o.name }),
+      h('span', { text: locked ? `с ${o.lvl} уровня` : o.hint || (o.lvl > 1 ? `открыта с ${o.lvl} уровня` : 'всегда') }),
+      locked ? h('span', { class: 'fr-lock' }, I.lock(16)) : null);
+    }));
+    const box = h('div', { class: 'menu frames', role: 'dialog' },
+      h('h2', { text: 'Рамка аватара' }), h('p', { text: `Твой уровень: ${lv}. Новые рамки открываются на 5, 15, 30 и 50 уровне.` }), grid,
+      h('div', { class: 'sl-actions' }, h('button', { class: 'btn', nav: 'frb', act: () => finish(null) }, 'Отмена')));
+    const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'frames', hints: [['A', 'Выбрать'], ['B', 'Отмена']] };
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; popLayer(layer); resolve(v); };
+    layer.onBack = () => finish(null);
+    layer.focusFirst = () => focus(grid.querySelector('.fr-opt.cur') || grid.firstChild);
+    pushLayer(layer);
+  });
+}
 function renderLevel() {
   const b = S.bro;
+  applyFrame();
   if (!b) return;
   $('#lvl-pill').textContent = `LV ${b.level}`;
   $('#xp-fill').style.width = `${Math.min(100, (b.into / b.need) * 100)}%`;
@@ -1565,6 +1620,8 @@ function broCelebrate(ev) {
     h('span', { class: 'eyebrow', text: lv ? 'Новый уровень' : 'Челлендж выполнен' }),
     h('h2', { text: lv ? `Уровень ${lv}!` : BRO_PRAISE[Math.floor(Math.random() * BRO_PRAISE.length)] }),
     h('p', { text: lv ? `Ты апнулся до ${lv} уровня! За «${broText(c)}» +${c.xp} XP` : `${broText(c)} — +${c.xp} XP` }),
+    lv && FRAMES.find((f) => f.lvl === lv) ? h('div', { class: 'bro-unlock' }, avatarPreview(FRAMES.find((f) => f.lvl === lv).id, 56),
+      h('span', { text: `Открыта рамка «${FRAMES.find((f) => f.lvl === lv).name}» — выбери её в настройках` })) : null,
     h('div', { class: 'bro-pop-xp', text: `+${c.xp} XP` }),
     h('div', { class: 'sl-actions' }, h('button', { class: 'btn primary', nav: 'bp', act: () => popLayer(layer) }, lv ? 'Круто!' : 'Отлично')));
   const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'bropop', hints: [['A', 'Закрыть']] };
@@ -1644,6 +1701,13 @@ function renderBattery(list) {
 }
 let lastBattery = [];
 api.onPadBattery((b) => { lastBattery = b; renderBattery(b); });
+
+let winSoundAt = 0;
+api.onWinState((k) => {
+  if (performance.now() - winSoundAt < 350) return; // restore + show can arrive together
+  winSoundAt = performance.now();
+  sound(k === 'minimize' ? 'minimize' : 'restore');
+});
 
 api.onUpdate((d) => {
   if (d.state === 'available') {
@@ -1878,6 +1942,10 @@ function openSettings() {
         if (v != null) set({ sgdbKey: v.trim() });
       }),
       h('div', { class: 'group-label', text: 'Интерфейс' }),
+      row('frame', 'Рамка аватара', 'Открываются с уровнем Game Bro', h('span', { class: 'v', text: (FRAMES.find((f) => f.id === frameFor()) || FRAMES[0]).name + ((st.avatarFrame || 'auto') === 'auto' ? ' · авто' : '') }), async () => {
+        const v = await frameBox();
+        if (v) { await set({ avatarFrame: v }); applyFrame(); sound('toggle'); }
+      }),
       row('accent', 'Цвет акцента', 'Кнопки, рамка выбора, свечение', sw, async () => {
         const c = await colorBox(st.accent || ACCENTS[0]);
         if (c && c.toLowerCase() !== (st.accent || '').toLowerCase()) await set({ accent: c });

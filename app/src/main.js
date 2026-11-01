@@ -38,7 +38,7 @@ const DEFAULTS = {
   steamKey: '', steamId: '', steamPath: '', accent: '#3FD1A9',
   fullscreen: true, minimizeOnLaunch: true, autostart: false,
   sfxVolume: 50, uiScale: 100, sgdbKey: '',
-  background: true, guideButton: true, autoUpdate: true,
+  background: true, guideButton: true, autoUpdate: true, avatarFrame: 'auto',
 };
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -928,6 +928,13 @@ function createWindow(showNow = false) {
   win.setMenu(null);
   win.once('ready-to-show', () => { if (!startHidden || showNow) win.show(); });
   // closing hides to the tray in background mode, so the Guide button can bring Lobby back instantly
+  // minimise / restore sounds are played by the page; the first show at start-up has its own chord
+  let shown = false;
+  const winSound = (kind) => { if (shown) send('win-state', kind); };
+  win.on('show', () => { if (shown) winSound('restore'); shown = true; });
+  win.on('restore', () => winSound('restore'));
+  win.on('minimize', () => winSound('minimize'));
+  win.on('hide', () => winSound('minimize'));
   win.on('close', (e) => {
     if (!quitting && settings.background && steam.IS_WIN) { e.preventDefault(); win.hide(); }
   });

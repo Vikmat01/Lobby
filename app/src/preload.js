@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
   broGet: call('bro:get'),
   broReroll: call('bro:reroll'),
   onBro: (fn) => ipcRenderer.on('bro', (_e, d) => fn(d)),
+  onWinState: (fn) => ipcRenderer.on('win-state', (_e, d) => fn(d)),
   onDownloads: (fn) => ipcRenderer.on('downloads', (_e, d) => fn(d)),
   onSession: (fn) => ipcRenderer.on('session', (_e, d) => fn(d)),
 });
