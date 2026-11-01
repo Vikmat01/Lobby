@@ -1,0 +1,14 @@
+{
+  "name": "lobby-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build/build.mjs",
+    "start": "electron app"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "extract-zip": "2.0.1",
+    "resedit": "3.1.0"
+  }
+}

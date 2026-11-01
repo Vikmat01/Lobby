@@ -1,0 +1,12 @@
+{
+  "name": "lobby",
+  "productName": "Lobby",
+  "version": "1.6.0",
+  "description": "Lobby — console-style game launcher",
+  "main": "src/main.js",
+  "private": true,
+  "dependencies": {
+    "koffi": "3.3.6"
+  },
+  "license": "MIT"
+}
