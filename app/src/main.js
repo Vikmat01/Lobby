@@ -778,6 +778,31 @@ ipcMain.handle('game:install', (_e, id) => installGame(id));
 ipcMain.handle('game:uninstall', (_e, id) => uninstallGame(id));
 ipcMain.handle('game:folder', (_e, id) => { const g = library.games[id]; return g && g.source === 'custom' ? customGameDir(g) : null; });
 ipcMain.handle('downloads:get', () => downloads);
+// ---------- Steam friends ----------
+const friends = require('./friends').create({
+  getKey: () => settings.steamKey,
+  getSteamId: () => (library.profile && library.profile.steamId) || '',
+});
+ipcMain.handle('friends:list', (_e, force) => friends.friends(!!force));
+ipcMain.handle('friends:detail', (_e, id) => {
+  if (!/^\d{17}$/.test(String(id))) return null;
+  const mine = {};
+  const names = {};
+  for (const g of Object.values(library.games)) if (g.source === 'steam' && g.owned) { mine[g.appid] = g.steamMinutes || 0; names[g.appid] = g.customName || g.name; }
+  return friends.detail(String(id), mine).then((d) => {
+    for (const c of d.common || []) if (!c.name && names[c.appid]) c.name = names[c.appid];
+    return d;
+  }).catch((e) => ({ error: e.message }));
+});
+// chat, profile and joining go through the Steam client
+ipcMain.handle('friends:open', (_e, { kind, id, appid, lobby }) => {
+  const digits = (v) => /^\d+$/.test(String(v || ''));
+  if (!digits(id)) return;
+  if (kind === 'chat') shell.openExternal(`steam://friends/message/${id}`);
+  else if (kind === 'profile') shell.openExternal(`steam://url/SteamIDPage/${id}`);
+  else if (kind === 'join' && digits(appid) && digits(lobby)) shell.openExternal(`steam://joinlobby/${appid}/${lobby}/${id}`);
+});
+
 ipcMain.handle('app:steamDownloads', () => shell.openExternal('steam://open/downloads'));
 ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.handle('update:get', () => ({ current: app.getVersion(), info: updateInfo }));

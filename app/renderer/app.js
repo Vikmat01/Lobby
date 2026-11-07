@@ -40,6 +40,7 @@ const I = {
   grid: () => icon(['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'], { size: 44 }),
   plus: () => icon(['M12 5v14', 'M5 12h14'], { size: 44 }),
   download: () => icon(['M12 3v12', 'M7 10l5 5 5-5', 'M5 21h14'], { size: 20 }),
+  users: (size = 14) => icon(['M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20', 'M10 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4', 'M15.5 4.6a3.5 3.5 0 0 1 0 6.8'], { size }),
   trophy: (size = 14) => icon(['M8 21h8', 'M12 17v4', 'M7 4h10v5a5 5 0 0 1-10 0z', 'M17 5h3v2a3 3 0 0 1-3 3', 'M7 5H4v2a3 3 0 0 0 3 3'], { size }),
   lock: (size = 14) => icon(['M6 11h12v10H6z', 'M8 11V7a4 4 0 0 1 8 0v4'], { size }),
 };
@@ -104,6 +105,7 @@ const TABS = [
   { id: 'steam', label: 'Steam' },
   { id: 'epic', label: 'Epic' },
   { id: 'custom', label: 'Мои игры' },
+  { id: 'friends', label: 'Друзья' },
   { id: 'trophies', label: 'Трофеи' },
 ];
 const SOURCE = { steam: 'Steam', epic: 'Epic Games', custom: 'Своя игра' };
@@ -467,10 +469,10 @@ function press(btn) {
   switch (btn) {
     case 'A': if (f && f._act) { sound(f.dataset.sfx || 'select'); squish(f); f._act(); } else if (!f) defaultFocus(); break;
     case 'B': sound('back'); if (layer) (layer.onBack ? layer.onBack() : popLayer()); else if (S.tab !== 'home') setTab('home'); break;
-    case 'X': if (f && f._alt) f._alt(); else if (!layer && S.tab !== 'home' && S.tab !== 'trophies') cycleSort(); break;
-    case 'Y': if (!layer) { if (S.tab === 'trophies') { toast('Обновляю достижения…'); openTrophies(true); } else openSearch(); } break;
+    case 'X': if (f && f._alt) f._alt(); else if (!layer && isLibTab()) cycleSort(); break;
+    case 'Y': if (!layer) { if (S.tab === 'trophies') { toast('Обновляю достижения…'); openTrophies(true); } else if (S.tab === 'friends') { toast('Обновляю друзей…'); loadFriends(true); } else openSearch(); } break;
     case 'MENU': if (!layer) openSettings(); else if (layer.kind === 'settings') popLayer(); break;
-    case 'VIEW': if (!layer && S.tab !== 'home' && S.tab !== 'trophies') cycleFilter(); break;
+    case 'VIEW': if (!layer && isLibTab()) cycleFilter(); break;
     case 'LB': if (!layer) cycleTab(-1); break;
     case 'RB': if (!layer) cycleTab(1); break;
     case 'up': case 'down': case 'left': case 'right': move(btn); break;
@@ -649,9 +651,9 @@ function updateHints() {
   if (layer && layer.hints) list = typeof layer.hints === 'function' ? layer.hints() : layer.hints;
   else {
     const onGame = S.focused && S.focused._alt;
-    const lib = S.tab !== 'home' && S.tab !== 'trophies';
-    list = [['A', 'Выбрать'], onGame && S.tab !== 'trophies' && ['X', 'Действия'], !onGame && lib && ['X', 'Сортировка'],
-      lib && ['VIEW', 'Фильтр'], ['Y', S.tab === 'trophies' ? 'Обновить' : 'Поиск'], ['MENU', 'Настройки']];
+    const lib = isLibTab();
+    list = [['A', 'Выбрать'], onGame && S.tab !== 'trophies' && S.tab !== 'friends' && ['X', 'Действия'], !onGame && lib && ['X', 'Сортировка'],
+      lib && ['VIEW', 'Фильтр'], ['Y', S.tab === 'trophies' || S.tab === 'friends' ? 'Обновить' : 'Поиск'], ['MENU', 'Настройки']];
   }
   bar.replaceChildren(
     h('span', { class: 'left', text: layer ? '' : S.input === 'kb' ? 'Q / E — разделы  ·  F11 — полный экран  ·  ПКМ — действия' : 'LB / RB — разделы  ·  F11 — полный экран' }),
@@ -848,6 +850,7 @@ function renderHome() {
       hero, stats,
       downloadsBlock(block),
       broBlock(block),
+      friendsBlock(block),
       block(recent.length ? 'Недавние' : 'Установленные', null, recentRow),
       shelf.length ? block('Библиотека', 'Установленные · по времени игры', coverRow(shelf, 'shelf')) : null,
       rest.length ? block('Не установлены', `${gamesWord(rest.length)} · по времени игры`, coverRow(rest, 'rest', true)) : null));
@@ -1061,18 +1064,21 @@ function cycleFilter() {
   renderLibrary(); defaultFocus();
 }
 
+const isLibTab = () => !['home', 'trophies', 'friends'].includes(S.tab);
 function setTab(id) {
   S.tab = id;
   renderTabs();
   $('#view-home').hidden = id !== 'home';
-  $('#view-library').hidden = id === 'home' || id === 'trophies';
+  $('#view-library').hidden = id === 'home' || id === 'trophies' || id === 'friends';
   $('#view-trophies').hidden = id !== 'trophies';
+  $('#view-friends').hidden = id !== 'friends';
   if (S.focused) S.focused.classList.remove('is-focused');
   S.focused = null;
   if (id === 'home') { renderHome(); }
   else if (id === 'trophies') { setHeroArt(null); openTrophies(); }
+  else if (id === 'friends') { setHeroArt(null); renderFriends(); if (!S.friends || Date.now() - S.friends.at > 45e3) loadFriends(); }
   else { setHeroArt(null); renderLibrary(); }
-  intro(id === 'home' ? $('#view-home') : id === 'trophies' ? $('#view-trophies') : $('#view-library'));
+  intro(id === 'home' ? $('#view-home') : id === 'trophies' ? $('#view-trophies') : id === 'friends' ? $('#view-friends') : $('#view-library'));
   defaultFocus();
 }
 // staggered entrance for tiles after switching sections
@@ -1097,7 +1103,7 @@ function refresh() {
   if (layers.length) { for (const l of layers) if (l.refresh) l.refresh(); return; }
   const key = S.focused ? (S.focused.getAttribute('aria-label') || S.focused.dataset.key) : null;
   const row = S.focused ? S.focused.dataset.row : null;
-  if (S.tab === 'home') renderHome(); else if (S.tab === 'trophies') renderTrophies(); else renderLibrary();
+  if (S.tab === 'home') renderHome(); else if (S.tab === 'trophies') renderTrophies(); else if (S.tab === 'friends') renderFriends(); else renderLibrary();
   if (S.focused && S.focused.isConnected) return;
   S.focused = null;
   const els = scopeEls().filter(isShown);
@@ -1478,6 +1484,144 @@ api.onAchNew((d) => {
   setTimeout(() => { pushLayer(layer); sound('done'); }, 600);
   refreshAll();
 });
+
+// =====================================================================
+// Friends (Steam): who is online, what they play, recent games and games in common
+// =====================================================================
+S.friends = null;
+const FSTATE = ['Не в сети', 'В сети', 'Занят', 'Отошёл', 'Спит', 'Хочет обменяться', 'Хочет поиграть'];
+const steamHeader = (appid) => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`;
+const friendStatus = (f) => (f.game ? `Играет в ${f.game}` : f.state ? FSTATE[f.state] || 'В сети' : f.lastOff ? `Был ${fmtAgo(f.lastOff)}` : 'Не в сети');
+const friendKind = (f) => (f.game ? 'ingame' : f.state ? 'online' : 'offline');
+function friendAvatar(f, size) {
+  const el = h('span', { class: `fr-av ${friendKind(f)}`, style: `--sz:${size}px` });
+  if (f.avatar) { const img = h('img', { alt: '' }); img.onerror = () => el.replaceChildren(f.name[0].toUpperCase()); img.src = f.avatar; el.append(img); } else el.textContent = f.name[0].toUpperCase();
+  return el;
+}
+function gameArt(appid, name) {
+  const el = h('span', { class: 'fg-art', style: `background:${PALETTE[hash(name || appid) % PALETTE.length][0]}` });
+  const img = h('img', { alt: '', loading: 'lazy' });
+  img.onload = () => { el.classList.add('ok'); img.classList.add('ok'); };
+  img.src = steamHeader(appid);
+  el.append(img);
+  return el;
+}
+let friendsTimer = 0;
+async function loadFriends(force) {
+  const r = await api.friendsList(!!force);
+  if (!r) return;
+  const sig = (x) => (x && x.friends ? x.friends.filter((f) => f.game).map((f) => f.id + f.game).join() : '');
+  const homeChanged = sig(S.friends) !== sig(r);
+  S.friends = { ...r, at: Date.now() };
+  clearTimeout(friendsTimer);
+  friendsTimer = setTimeout(() => loadFriends(), S.tab === 'friends' ? 60e3 : 180e3);
+  if (layers.length) { for (const l of layers) if (l.kind === 'friend' && l.refresh) l.refresh(); return; }
+  if (S.tab === 'friends' || (S.tab === 'home' && homeChanged)) refresh();
+}
+function sortFriends(list) {
+  const rank = (f) => (f.game ? 0 : f.state ? 1 : 2);
+  return [...list].sort((a, b) => rank(a) - rank(b) || (b.lastOff - a.lastOff) || a.name.localeCompare(b.name, 'ru'));
+}
+function friendTile(f, row) {
+  const kids = [];
+  if (f.game && f.gameId) kids.push(gameArt(f.gameId, f.game), h('span', { class: 'fg-shade' }));
+  kids.push(friendAvatar(f, f.game ? 64 : 56),
+    h('span', { class: 'fr-txt' }, h('b', { text: f.name }), h('span', { class: 'fr-st', text: friendStatus(f) })));
+  return h('button', { class: `tile friend ${friendKind(f)}${f.game ? ' playing' : ''}`, nav: row, key: f.id, 'aria-label': f.name, act: () => openFriend(f.id) }, ...kids);
+}
+function renderFriends() {
+  const view = $('#view-friends');
+  const F = S.friends;
+  if (!F) {
+    view.replaceChildren(h('div', { class: 'tr-wait' }, I.users(48), h('b', { text: 'Загружаю друзей…' })));
+    return;
+  }
+  const list = sortFriends(F.friends || []);
+  const head = (sub) => h('div', { class: 'tr-head' }, h('div', {}, h('h1', { text: 'Друзья' }), h('div', { class: 'sub', text: sub })), stats);
+  if (!list.length) {
+    const msg = F.code === 'NOKEY' || !S.settings.steamKey ? 'Чтобы видеть друзей из Steam, добавь ключ Steam Web API в настройках (≡ → Steam).' : F.error || 'В Steam пока нет друзей.';
+    view.replaceChildren(h('div', { class: 'lib-head' }, h('div', {}, h('h1', { text: 'Друзья' }))), h('div', { class: 'lib-scroll' }, h('div', { class: 'empty', text: msg })));
+    return;
+  }
+  const playing = list.filter((f) => f.game);
+  const online = list.filter((f) => !f.game && f.state);
+  const offline = list.filter((f) => !f.game && !f.state);
+  const stat = (v, l) => h('div', { class: 'tr-stat' }, h('b', { text: v }), h('span', { text: l }));
+  var stats = h('div', { class: 'tr-stats' }, stat(String(playing.length), 'в игре'), stat(String(online.length + playing.length), 'в сети'), stat(String(list.length), plural(list.length, 'друг', 'друга', 'друзей')));
+  const block = (title, sub, row) => h('div', { class: 'row-wrap' }, h('div', { class: 'row-title' }, h('h2', { text: title }), sub ? h('span', { text: sub }) : null), row);
+  const grid = (arr, row) => h('div', { class: 'fr-grid-list' }, ...arr.map((f) => friendTile(f, row)));
+  const prevScroll = view.querySelector('.home-scroll')?.scrollTop || 0;
+  const scroller = h('div', { class: 'home-scroll tr-scroll', 'data-scroll': 'y' },
+    h('div', { class: 'home-inner tr-inner' },
+      head(`Steam · обновляется само${F.stale ? ' · нет связи, показан прошлый список' : ''}`),
+      playing.length ? block('Играют сейчас', null, h('div', { class: 'row', 'data-scroll': 'x' }, ...playing.map((f) => friendTile(f, 'f-play')))) : null,
+      online.length ? block('В сети', null, grid(online, 'f-on')) : null,
+      offline.length ? block('Не в сети', null, grid(offline, 'f-off')) : null));
+  scroller.addEventListener('scroll', () => $('#topbar').classList.toggle('solid', scroller.scrollTop > 40));
+  view.replaceChildren(scroller);
+  scroller.scrollTop = prevScroll;
+}
+// home: friends who are playing right now
+function friendsBlock(block) {
+  const playing = S.friends ? sortFriends(S.friends.friends || []).filter((f) => f.game) : [];
+  if (!playing.length) return null;
+  return block('Друзья играют', `${playing.length} ${plural(playing.length, 'друг', 'друга', 'друзей')} сейчас в игре`,
+    h('div', { class: 'row', 'data-scroll': 'x' }, ...playing.slice(0, 12).map((f) => friendTile(f, 'f-home'))));
+}
+
+async function openFriend(id) {
+  const root = h('div', {});
+  const layer = { el: root, kind: 'friend', hints: [['A', 'Выбрать'], ['B', 'Назад']] };
+  let detail = null;
+  layer.refresh = () => {
+    const f = (S.friends && S.friends.friends.find((x) => x.id === id));
+    if (!f) return popLayer(layer);
+    const keep = S.focused && root.contains(S.focused) ? S.focused.dataset.key : null;
+    const prev = root.querySelector('.sheet-scroll')?.scrollTop || 0;
+    const mineG = (appid) => byId(`steam:${appid}`);
+    const gameRow = (g, sub, key) => {
+      const own = mineG(g.appid);
+      return h('button', { class: 'fg-row', nav: 'fg', key, act: () => { if (own) { popLayer(layer); openGame(own.id); } else { sound('bump'); toast('Этой игры нет в твоей библиотеке'); } } },
+        gameArt(g.appid, g.name), h('span', { class: 'rw-txt' }, h('b', { text: g.name }), h('span', { text: sub })),
+        own ? h('span', { class: 'fg-own', text: own.installed ? 'установлена' : 'есть у тебя' }) : null);
+    };
+    const d = detail;
+    const sections = [];
+    if (!d) sections.push(h('div', { class: 'pick-status', text: 'Загружаю игры друга…' }));
+    else {
+      if (d.recent.length) sections.push(h('div', { class: 'group-label', text: 'Играл последние две недели' }),
+        h('div', { class: 'fg-list' }, ...d.recent.map((g) => gameRow(g, `${fmtTime(g.week2)} за 2 недели · всего ${fmtTime(g.total)}`, `r${g.appid}`))));
+      if (d.gamesHidden) sections.push(h('div', { class: 'group-label', text: 'Общие игры' }), h('p', { class: 'fr-note', text: 'Друг скрыл список игр в Steam, поэтому общие игры не видны.' }));
+      else if (d.common.length) sections.push(h('div', { class: 'group-label', text: `Общие игры · ${d.common.length} из ${d.owned}` }),
+        h('div', { class: 'fg-list' }, ...d.common.slice(0, 30).map((g) => gameRow(g, `у друга ${g.theirs ? fmtTime(g.theirs) : 'не играл'} · у тебя ${g.mine ? fmtTime(g.mine) : 'не играл'}`, `c${g.appid}`))));
+      else sections.push(h('div', { class: 'group-label', text: 'Общие игры' }), h('p', { class: 'fr-note', text: 'Общих игр нет.' }));
+    }
+    const own = f.gameId ? mineG(f.gameId) : null;
+    const scroll = h('div', { class: 'sheet-scroll', 'data-scroll': 'y' },
+      h('div', { class: 'pf-head' }, friendAvatar(f, 112),
+        h('div', { class: 'pf-who' },
+          h('span', { class: `eyebrow fr-eb ${friendKind(f)}`, text: friendStatus(f) }),
+          h('h1', { text: f.name }),
+          h('div', { class: 'fr-meta', text: [d && d.level != null ? `Уровень Steam ${d.level}` : null, f.since ? `в друзьях с ${new Date(f.since).getFullYear()} года` : null].filter(Boolean).join(' · ') }))),
+      f.game && f.gameId ? h('div', { class: 'fr-now' }, gameArt(f.gameId, f.game), h('span', { class: 'fg-shade' }),
+        h('span', { class: 'fr-now-txt' }, h('span', { class: 'eyebrow', text: 'Сейчас играет' }), h('b', { text: f.game }))) : null,
+      h('div', { class: 'acts pf-acts' },
+        f.lobby ? h('button', { class: 'btn primary', nav: 'fa', key: 'join', act: () => { sound('launch'); api.friendOpen({ kind: 'join', id: f.id, appid: f.gameId, lobby: f.lobby }); } }, 'Присоединиться') : null,
+        !f.lobby && own && own.installed ? h('button', { class: 'btn primary', nav: 'fa', key: 'play', act: () => { popLayer(layer); launch(own.id); } }, `Играть тоже`) : null,
+        h('button', { class: `btn${f.lobby || (own && own.installed) ? '' : ' primary'}`, nav: 'fa', key: 'chat', act: () => { sound('select'); api.friendOpen({ kind: 'chat', id: f.id }); toast('Открываю чат в Steam'); } }, 'Написать'),
+        h('button', { class: 'btn', nav: 'fa', key: 'profile', act: () => { api.friendOpen({ kind: 'profile', id: f.id }); toast('Открываю профиль в Steam'); } }, 'Профиль Steam')),
+      ...sections);
+    root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet profile-sheet friend-sheet', role: 'dialog' }, scroll));
+    root.querySelector('.sheet-scroll').scrollTop = prev;
+    if (keep) { const el = root.querySelector(`[data-key="${keep}"]`); if (el) focus(el, { scroll: false }); }
+  };
+  layer.focusFirst = () => focus(root.querySelector('.pf-acts .btn'));
+  layer.refresh();
+  pushLayer(layer);
+  detail = await api.friendDetail(id);
+  if (detail && detail.error) detail = null;
+  if (layers.includes(layer)) layer.refresh();
+}
 
 // =====================================================================
 // Game Bro: daily challenges, experience, levels
@@ -2677,6 +2821,7 @@ async function boot() {
   setInterval(tickClock, 1000);
   setInterval(() => { if (runLayer) runLayer.tick(); }, 1000);
   setTab('home');
+  setTimeout(() => loadFriends(), 2500);
   if (S.session) showRunning(S.session.gameId);
   requestAnimationFrame(pollPads);
   hideCursor();
