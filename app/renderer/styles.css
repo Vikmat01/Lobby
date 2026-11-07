@@ -209,7 +209,7 @@ button { font: inherit; color: inherit; }
 
 /* ---------- layers (game page, settings, keyboard, dialogs) ---------- */
 #layers { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
-.layer { position: absolute; inset: 0; pointer-events: auto; }
+.layer { position: absolute; inset: 0; pointer-events: auto; isolation: isolate; } /* nothing from a lower layer can paint over a higher one */
 .layer > .scrim { animation: fade-in 260ms ease both; }
 .layer.closing { pointer-events: none; animation: fade-out 180ms ease both; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
