@@ -1577,7 +1577,7 @@ async function openFriend(id) {
     const f = (S.friends && S.friends.friends.find((x) => x.id === id));
     if (!f) return popLayer(layer);
     const keep = S.focused && root.contains(S.focused) ? S.focused.dataset.key : null;
-    const prev = root.querySelector('.sheet-scroll')?.scrollTop || 0;
+    const restore = keepScroll(root);
     const mineG = (appid) => byId(`steam:${appid}`);
     const gameRow = (g, sub, key) => {
       const own = mineG(g.appid);
@@ -1612,7 +1612,7 @@ async function openFriend(id) {
         h('button', { class: 'btn', nav: 'fa', key: 'profile', act: () => { api.friendOpen({ kind: 'profile', id: f.id }); toast('Открываю профиль в Steam'); } }, 'Профиль Steam')),
       ...sections);
     root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet profile-sheet friend-sheet', role: 'dialog' }, scroll));
-    root.querySelector('.sheet-scroll').scrollTop = prev;
+    restore();
     if (keep) { const el = root.querySelector(`[data-key="${keep}"]`); if (el) focus(el, { scroll: false }); }
   };
   layer.focusFirst = () => focus(root.querySelector('.pf-acts .btn'));
@@ -2012,6 +2012,7 @@ function openProfile() {
   layer.refresh = () => {
     const b = S.bro || { level: 1, into: 0, need: 100, xp: 0, done: 0, prestige: 0 };
     const keep = S.focused && root.contains(S.focused) ? S.focused.dataset.key : null;
+    const restore = keepScroll(root);
     const p = S.profile;
     const name = (p && p.personaName) || 'Игрок';
     const t = S.settings.title === 'none' ? null : titleFor();
@@ -2066,6 +2067,7 @@ function openProfile() {
       h('div', { class: 'group-label', text: next ? `Награды · следующая на ${next.lvl} уровне` : 'Награды · всё открыто' }),
       h('div', { class: 'pf-list' }, ...list));
     root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet profile-sheet', role: 'dialog' }, scroll));
+    restore();
     if (keep) { const el = root.querySelector(`[data-key="${keep}"]`); if (el) focus(el, { scroll: false }); }
   };
   layer.focusFirst = () => focus(root.querySelector('[data-key="bro"]'));
@@ -2407,6 +2409,12 @@ function openSearch() {
 // =====================================================================
 // settings
 // =====================================================================
+// a sheet rebuilt in place keeps its scroll position (set instantly, not with the smooth scroll)
+function keepScroll(root) {
+  const old = root.querySelector('.sheet-scroll');
+  const top = old ? old.scrollTop : 0;
+  return () => { const n = root.querySelector('.sheet-scroll'); if (n && top) n.scrollTo({ top, behavior: 'instant' }); };
+}
 function openSettings() {
   const root = h('div', {});
   const layer = { el: root, kind: 'settings', hints: [['A', 'Изменить'], ['B', 'Закрыть']] };
@@ -2419,6 +2427,7 @@ function openSettings() {
   layer.refresh = () => {
     const st = S.settings;
     const keep = S.focused && root.contains(S.focused) ? S.focused.dataset.key : null;
+    const restore = keepScroll(root);
     const row = (key, label, sub, value, act) => h('button', { class: 'srow', nav: true, key, act },
       h('span', { class: 'l' }, h('b', { text: label }), sub ? h('span', { text: sub }) : null),
       value && value.nodeType ? value : h('span', { class: 'v', text: value || '' }));
@@ -2521,6 +2530,7 @@ function openSettings() {
       row('quit', 'Выйти из Lobby', null, '', () => api.quit()),
     );
     root.replaceChildren(h('div', { class: 'scrim' }), h('div', { class: 'sheet', role: 'dialog' }, h('h1', { text: 'Настройки' }), scroll));
+    restore();
     if (keep) { const el = root.querySelector(`[data-key="${keep}"]`); if (el) focus(el, { scroll: false }); }
   };
   layer.refresh();
