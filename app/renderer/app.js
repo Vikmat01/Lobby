@@ -1294,7 +1294,7 @@ function fmtDate(ts) {
 }
 function achIcon(a, size = 64) {
   const img = h('img', { class: `ach-ic${a.unlocked ? '' : ' off'}`, alt: '', src: a.icon || '', style: `width:${size}px;height:${size}px` });
-  img.onerror = () => img.replaceWith(h('span', { class: 'ach-ic ph', style: `width:${size}px;height:${size}px` }, I.trophy(size * 0.45)));
+  img.onerror = () => img.replaceWith(h('span', { class: 'ach-ic ach-ph', style: `width:${size}px;height:${size}px` }, I.trophy(size * 0.45)));
   return img;
 }
 async function loadAch(id, force) {
