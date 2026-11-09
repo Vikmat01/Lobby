@@ -1,12 +1,13 @@
 {
   "name": "lobby",
   "productName": "Lobby",
-  "version": "1.7.8",
+  "version": "1.8.0",
   "description": "Lobby — console-style game launcher",
   "main": "src/main.js",
   "private": true,
   "dependencies": {
-    "koffi": "3.3.6"
+    "koffi": "3.3.6",
+    "qrcode-generator": "2.0.4"
   },
   "license": "MIT"
 }

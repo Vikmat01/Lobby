@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 const steam = require('./steam');
 const epic = require('./epic');
 const guide = require('./guide');
@@ -40,6 +40,7 @@ const DEFAULTS = {
   sfxVolume: 50, uiScale: 100, sgdbKey: '',
   background: true, guideButton: true, autoUpdate: true, avatarFrame: 'auto',
   avatarIcon: 'auto', title: 'auto', sfxPack: 'classic', ambient: 'none', focusFx: 'glow', launchFx: true,
+  remote: false,
 };
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -62,7 +63,13 @@ function writeJson(file, data) {
 const saveLibrary = () => writeJson(FILES.library, library);
 const saveSettings = () => writeJson(FILES.settings, settings);
 const fileUrl = (p) => (p && !/^https?:/.test(p) ? pathToFileURL(p).href : p);
-const send = (ch, data) => { if (win && !win.isDestroyed()) win.webContents.send(ch, data); };
+// what the phone app also hears about
+const REMOTE_EVENTS = new Set(['session', 'downloads', 'bro', 'ach-new']);
+let remoteSend = null;
+const send = (ch, data) => {
+  if (win && !win.isDestroyed()) win.webContents.send(ch, data);
+  if (remoteSend && REMOTE_EVENTS.has(ch)) remoteSend(ch, data);
+};
 
 // ---------- library view for the renderer ----------
 function viewGame(g) {
@@ -803,6 +810,68 @@ ipcMain.handle('friends:open', (_e, { kind, id, appid, lobby }) => {
   else if (kind === 'join' && digits(appid) && digits(lobby)) shell.openExternal(`steam://joinlobby/${appid}/${lobby}/${id}`);
 });
 
+// ---------- Lobby Companion (phone) ----------
+const ACCENT_BASE = { 'grad:sunset': '#FF8A5B', 'grad:chrome': '#D9DEE5', 'grad:aurora': '#5EE7C4' };
+const remoteArt = (g, v) => {
+  const out = {};
+  for (const k of ['cover', 'hero', 'wide']) out[k] = v.art[k].slice(0, 3).map((u, i) => (/^https:/.test(u) ? u : `/art/${encodeURIComponent(g.id)}/${k}/${i}`));
+  return out;
+};
+const remoteGame = (g) => {
+  const v = viewGame(g);
+  return { id: v.id, source: v.source, appid: v.appid, name: v.name, installed: v.installed, owned: v.owned, size: v.size, minutes: v.minutes, lastPlayed: v.lastPlayed, ach: v.ach, art: remoteArt(g, v) };
+};
+const localPath = (u) => { try { return u && u.startsWith('file:') ? fileURLToPath(u) : null; } catch { return null; } };
+const remote = require('./remote').create({
+  file: path.join(USER, 'phones.json'), port: 47820, version: app.getVersion(),
+  api: {
+    artFile: (id, kind, i) => { const g = library.games[id]; return g ? localPath(viewGame(g).art[kind][i]) : null; },
+    avatarFile: () => { const a = library.profile && library.profile.avatar; return a && !/^https?:/.test(a) && fs.existsSync(a) ? a : null; },
+    games: () => Object.values(library.games).filter((g) => !g.hidden).map(remoteGame),
+    state: async () => {
+      const p = library.profile;
+      const sg = session && library.games[session.gameId];
+      return {
+        accent: ACCENT_BASE[settings.accent] || settings.accent || DEFAULTS.accent,
+        profile: { name: (p && p.personaName) || 'Игрок', avatar: p && p.avatar ? (/^https?:/.test(p.avatar) ? p.avatar : '/avatar') : null },
+        session: session ? { gameId: session.gameId, name: sg ? sg.customName || sg.name : '', since: session.start, state: session.state } : null,
+        bro: bro.view(), downloads,
+      };
+    },
+    launch: (id) => launch(id),
+    install: (id) => installGame(id),
+    ach: async (id) => {
+      const r = await achForGame(id, false);
+      if (r.error) return { error: r.error, code: r.code };
+      return { total: r.data.total, unlocked: r.data.unlocked, items: r.data.items.map(({ id: aid, name, desc, icon, unlocked, time, pct, hidden }) => ({ id: aid, name, desc, icon, unlocked, time, pct, hidden })) };
+    },
+    bro: () => bro.view(),
+    reroll: (id) => { const r = bro.reroll(id); const state = bro.view(); send('bro', { state }); return { ...r, state }; },
+    friends: (force) => friends.friends(force),
+    downloads: () => downloads,
+    summon: () => summon(),
+  },
+});
+remoteSend = (ch, data) => remote.broadcast(ch, ch === 'downloads' ? { list: data.list, events: data.events } : ch === 'bro' ? { events: data.events || [], state: data.state } : ch === 'ach-new' ? { gameId: data.gameId, items: (data.items || []).map((i) => ({ id: i.id, name: i.name, icon: i.icon })) } : ch === 'session' ? { state: data.state, gameId: data.gameId, since: data.since || null, minutes: data.minutes || 0, name: (library.games[data.gameId] && (library.games[data.gameId].customName || library.games[data.gameId].name)) || '' } : data);
+remote.onPaired((d) => send('remote-paired', { name: d.name }));
+async function applyRemote() {
+  if (settings.remote) { try { await remote.start(); } catch (e) { send('remote-error', { error: e.code === 'EADDRINUSE' ? 'порт занят другой программой' : e.message }); } } else remote.stop();
+}
+const remoteStatus = () => ({ on: !!settings.remote, running: remote.running(), port: remote.port(), ips: remote.addresses(), devices: remote.devices() });
+ipcMain.handle('remote:status', () => remoteStatus());
+ipcMain.handle('remote:pair', async () => {
+  if (!settings.remote) { settings.remote = true; saveSettings(); }
+  await applyRemote();
+  if (!remote.running()) return { error: 'Сервер для телефона не запустился' };
+  const info = remote.beginPairing();
+  const qr = require('qrcode-generator')(0, 'M');
+  qr.addData(info.link);
+  qr.make();
+  return { ...info, svg: qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true }) };
+});
+ipcMain.handle('remote:cancel', () => remote.cancelPairing());
+ipcMain.handle('remote:remove', (_e, id) => { remote.removeDevice(String(id)); return remoteStatus(); });
+
 ipcMain.handle('app:steamDownloads', () => shell.openExternal('steam://open/downloads'));
 ipcMain.handle('update:check', () => checkUpdate(true));
 ipcMain.handle('update:get', () => ({ current: app.getVersion(), info: updateInfo }));
@@ -829,6 +898,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if ('fullscreen' in patch && win) win.setFullScreen(!!settings.fullscreen);
   if ('autostart' in patch && steam.IS_WIN) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ['--hidden'] });
   if ('background' in patch || 'guideButton' in patch) applyBackground();
+  if ('remote' in patch) applyRemote();
   return settings;
 });
 ipcMain.handle('library:get', async () => {
@@ -979,6 +1049,7 @@ if (!app.requestSingleInstanceLock()) {
     if (settings.autostart && steam.IS_WIN) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); // re-point at Lobby.exe
     createWindow();
     applyBackground();
+    applyRemote();
     // controller battery, once every 20 s (only sends when something changed)
     let lastBat = '';
     const pollBattery = () => {

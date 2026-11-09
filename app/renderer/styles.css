@@ -785,3 +785,17 @@ html.acc-grad .lfx-bar > span { background-image: var(--accent-grad); }
 .tile .fr-av img { position: static; inset: auto; opacity: 1; }
 .tile .fg-art img.ok, .fg-art.ok img { opacity: 1; }
 .friend-sheet .sheet-scroll > * { flex: none; }
+
+/* ---------- phone pairing ---------- */
+.menu.pair { width: 860px; align-items: stretch; }
+.menu.pair h2, .menu.pair .eyebrow { text-align: left; }
+.pair-body { display: flex; gap: 36px; align-items: center; margin: 8px 0 4px; }
+.pair-qr { flex: none; width: 300px; height: 300px; padding: 14px; border-radius: 20px; background: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 40px color-mix(in srgb, var(--accent) 25%, transparent); transition: opacity 300ms, filter 300ms; }
+.pair-qr svg { width: 100%; height: 100%; display: block; }
+.menu.pair.expired .pair-qr { opacity: .25; filter: blur(3px); }
+.pair-info { flex: 1; display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.pair-info p { margin: 0; color: var(--text-2); font-size: 17px; line-height: 1.45; }
+.pair-code { display: flex; gap: 10px; }
+.pair-code b { width: 52px; height: 66px; border-radius: 12px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 800; font-size: 34px; color: #fff; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.pair-manual { font-size: 15px !important; color: var(--text-3) !important; }
+.pair-left { font-size: 14px; color: var(--accent); font-weight: 600; }

@@ -2520,6 +2520,12 @@ function openSettings() {
       row('auto', 'Запускать вместе с Windows', 'Стартует в фоне, без окна', tog(st.autostart), () => set({ autostart: !st.autostart })),
       row('guide', 'Кнопка Xbox открывает Lobby', 'Отключи в Windows: Параметры → Игры → Xbox Game Bar → кнопка контроллера', tog(st.guideButton), () => set({ guideButton: !st.guideButton })),
       row('bg', 'Работать в фоне', 'Закрытие окна убирает Lobby в трей, а не выключает', tog(st.background), () => set({ background: !st.background })),
+      h('div', { class: 'group-label', text: 'Телефон' }),
+      row('remote', 'Доступ с телефона', st.remote && S.remote && S.remote.running ? `Lobby Companion · ${(S.remote.ips[0] || 'нет сети')}:${S.remote.port}` : 'Управляй Lobby с телефона через приложение Lobby Companion',
+        tog(st.remote), async () => { await set({ remote: !st.remote }); setTimeout(refreshRemote, 400); }),
+      row('pair', 'Подключить телефон', 'Покажет QR-код для Lobby Companion', '', openPair),
+      ...((S.remote && S.remote.devices) || []).map((d) => row(`dev-${d.id}`, d.name, `подключён ${fmtDate(d.added)}${d.seen ? ` · на связи ${fmtAgo(d.seen)}` : ''}`, h('span', { class: 'v', text: 'Отключить' }),
+        () => confirmBox('Отключить телефон?', `«${d.name}» больше не сможет управлять Lobby. Подключить снова можно по QR-коду.`, 'Отключить', async () => { S.remote = await api.remoteRemove(d.id); layer.refresh(); }))),
       h('div', { class: 'group-label', text: 'Игры' }),
       row('add', 'Добавить свою игру', '.exe, ярлык .lnk или .url', '', () => { popLayer(layer); addGame(); }),
       h('div', { class: 'group-label', text: 'Приложение' }),
@@ -2535,7 +2541,57 @@ function openSettings() {
   };
   layer.refresh();
   pushLayer(layer);
+  refreshRemote();
 }
+async function refreshRemote() {
+  S.remote = await api.remoteStatus();
+  for (const l of layers) if (l.kind === 'settings') l.refresh();
+}
+// pairing a phone: QR code with the PC's addresses and a one-time code
+async function openPair() {
+  const info = await api.remotePair();
+  if (!info || info.error) { toast((info && info.error) || 'Не получилось включить доступ с телефона', 'warn'); return; }
+  S.settings.remote = true;
+  const qr = h('div', { class: 'pair-qr' });
+  qr.innerHTML = info.svg; // generated locally by qrcode-generator from our own link
+  const left = h('span', { class: 'pair-left' });
+  const box = h('div', { class: 'menu pair', role: 'dialog' },
+    h('span', { class: 'eyebrow', text: 'Lobby Companion' }),
+    h('h2', { text: 'Подключить телефон' }),
+    h('div', { class: 'pair-body' }, qr,
+      h('div', { class: 'pair-info' },
+        h('p', { text: 'Открой Lobby Companion на телефоне, нажми «Подключить» и наведи камеру на код.' }),
+        h('div', { class: 'pair-code' }, ...info.code.split('').map((c) => h('b', { text: c }))),
+        h('p', { class: 'pair-manual', text: `Без камеры: адрес ${info.ips[0] || '—'}:${info.port}, код выше.` }),
+        h('p', { class: 'pair-manual', text: 'Телефон и ПК должны быть в одной сети Wi-Fi. Если Windows спросит про брандмауэр, разреши доступ в частных сетях.' }),
+        left)),
+    h('div', { class: 'sl-actions' }, h('button', { class: 'btn', nav: 'pr', act: () => close() }, 'Закрыть')));
+  const layer = { el: h('div', {}, h('div', { class: 'scrim' }), box), kind: 'pair', hints: [['B', 'Закрыть']] };
+  const tick = () => {
+    const s = Math.max(0, Math.round((info.until - Date.now()) / 1000));
+    left.textContent = s ? `Код действует ещё ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : 'Код устарел — открой подключение заново';
+    if (!s) { clearInterval(timer); box.classList.add('expired'); }
+  };
+  const timer = setInterval(tick, 1000);
+  tick();
+  let closed = false;
+  const close = (paired) => {
+    if (closed) return;
+    closed = true;
+    clearInterval(timer);
+    if (!paired) api.remoteCancel();
+    popLayer(layer);
+    refreshRemote();
+  };
+  layer.onBack = () => close();
+  layer.onPaired = (d) => { close(true); sound('done'); toast(`Телефон «${d.name}» подключён`); };
+  pushLayer(layer);
+}
+api.onRemotePaired((d) => {
+  const l = layers.find((x) => x.kind === 'pair');
+  if (l) l.onPaired(d); else { toast(`Телефон «${d.name}» подключён`); refreshRemote(); }
+});
+api.onRemoteError((d) => toast(`Доступ с телефона не включился: ${d.error}`, 'warn'));
 async function setScale(v) {
   if (!UI_SCALES.includes(v)) return;
   const stage = $('#stage');
