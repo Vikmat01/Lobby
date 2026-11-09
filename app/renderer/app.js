@@ -424,6 +424,7 @@ function pushLayer(layer) {
   $('#layers').append(layer.el);
   layers.push(layer);
   $('#stage').classList.toggle('overlay-open', true);
+  markUnder();
   if (S.focused) S.focused.classList.remove('is-focused');
   S.focused = null;
   requestAnimationFrame(() => (layer.focusFirst ? layer.focusFirst() : defaultFocus()));
@@ -445,6 +446,7 @@ function popLayer(layer = layers[layers.length - 1]) {
   setTimeout(() => gone.remove(), 190);
   if (layer.onClose) layer.onClose();
   $('#stage').classList.toggle('overlay-open', layers.length > 0);
+  markUnder();
   if (S.focused && !S.focused.isConnected) S.focused = null;
   if (i === layers.length) {
     const back = layer.restore && layer.restore.isConnected && isShown(layer.restore) ? layer.restore : null;
@@ -457,6 +459,11 @@ function popLayer(layer = layers[layers.length - 1]) {
   updateHints();
 }
 const topLayer = () => layers[layers.length - 1];
+// everything under the top window stands still: the blurred scrim would otherwise
+// re-blur the whole screen on every frame of every animation underneath
+function markUnder() {
+  layers.forEach((l, i) => l.el.classList.toggle('under', i < layers.length - 1));
+}
 
 // =====================================================================
 // input: gamepad, keyboard, mouse
@@ -1823,6 +1830,7 @@ const Ambient = {
     const tick = (t) => {
       this.raf = requestAnimationFrame(tick);
       if (t - last < 33) return; // ~30 fps is plenty for slow dust
+      if (layers.length) return; // hidden under a window anyway
       last = t;
       const col = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
       ctx.clearRect(0, 0, W, H);
