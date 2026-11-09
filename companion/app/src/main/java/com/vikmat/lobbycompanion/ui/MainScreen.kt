@@ -126,7 +126,7 @@ private fun TopBar(vm: LobbyVm) {
                 if (bro != null) {
                     Spacer(Modifier.width(8.dp))
                     Text("LV ${bro.level}", color = Color.Black, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.background(accent, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+                        modifier = Modifier.background(LocalAccentBrush.current, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
                     if (bro.prestige > 0) Text("  ★${if (bro.prestige > 1) bro.prestige else ""}", color = Color(0xFFFFD45A), fontWeight = FontWeight.Bold)
                 }
             }

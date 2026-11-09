@@ -268,8 +268,8 @@ button { font: inherit; color: inherit; }
 .srow .l b { font-weight: 600; font-size: 18px; }
 .srow .l span { font-size: 14px; color: var(--text-3); }
 .srow .v { font-size: 16px; color: var(--text-2); max-width: 380px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.toggle { width: 54px; height: 30px; border-radius: 999px; background: #333333; position: relative; flex: none; transition: background 160ms; }
-.toggle::after { content: ''; position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 160ms; }
+.toggle { width: 54px; height: 30px; border-radius: 999px; background: #333333; position: relative; flex: none; transition: background 220ms; }
+.toggle::after { content: ''; position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform 260ms cubic-bezier(.34,1.56,.64,1); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
 .toggle.on { background: var(--accent); }
 .toggle.on::after { transform: translateX(24px); }
 .swatches { display: flex; gap: 10px; }

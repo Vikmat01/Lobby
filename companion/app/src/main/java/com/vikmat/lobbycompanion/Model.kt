@@ -83,7 +83,7 @@ data class Download(val gid: String, val name: String, val state: String, val pc
 }
 
 data class PcState(
-    val pc: String, val version: String, val accent: Int, val name: String, val avatar: String?,
+    val pc: String, val version: String, val accent: Int, val grad: List<Int>, val name: String, val avatar: String?,
     val session: Session?, val bro: Bro?, val downloads: List<Download>,
 ) {
     companion object {
@@ -92,6 +92,7 @@ data class PcState(
             val s = o.optJSONObject("session")
             return PcState(
                 pc = o.optString("pc"), version = o.optString("version"), accent = parseColor(o.optString("accent")),
+                grad = parseGrad(o),
                 name = p.optString("name", "Игрок"), avatar = p.str("avatar"),
                 session = s?.let { Session(it.optString("gameId"), it.optString("name"), it.optString("state"), it.optLong("since")) },
                 bro = o.optJSONObject("bro")?.let(Bro::from),
@@ -125,6 +126,8 @@ data class Achievement(
         )
     }
 }
+
+fun parseGrad(o: JSONObject): List<Int> = o.optJSONArray("grad").strings().map(::parseColor)
 
 fun parseColor(hex: String?): Int {
     val h = (hex ?: "").removePrefix("#")

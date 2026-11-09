@@ -24,7 +24,8 @@ import org.junit.Test
 class ScreensTest {
     @get:Rule
     val paparazzi = Paparazzi(
-        deviceConfig = DeviceConfig.PIXEL_6_PRO, theme = "android:Theme.Material.NoActionBar",
+        // like the Honor: about 360 dp wide
+        deviceConfig = DeviceConfig.PIXEL_6_PRO.copy(screenWidth = 1440, screenHeight = 3200, density = com.android.resources.Density.XXXHIGH), theme = "android:Theme.Material.NoActionBar",
         // layoutlib here is API 34; compose text calls an API 35 method otherwise
         environment = detectEnvironment().copy(compileSdkVersion = 34),
     )
@@ -56,7 +57,7 @@ class ScreensTest {
                 Challenge("b", "first", "custom:5", "Paper Knights", 15, 0, 80, false),
                 Challenge("c", "ach", "steam:4", "Hollow Tide", 1, 1, 120, true),
             ), null)
-            val state = PcState("GAMING-PC", "1.8.0", 0xFF3FD1A9.toInt(), "Vikmat01", null, null, bro,
+            val state = PcState("GAMING-PC", "1.8.0", 0xFF5EE7C4.toInt(), listOf(0xFF43E97B, 0xFF38F9D7, 0xFF8B7CFF, 0xFFD77BF0).map { it.toInt() }, "Vikmat01", null, null, bro,
                 listOf(Download("steam:6", "Low Orbit", "downloading", 0.42, 4_500_000_000, 10_700_000_000)))
             val friends = listOf(
                 Friend("1", "Kirill_GG", null, 1, "Glasshaven", "900100", 0), Friend("2", "Mashka", null, 1, "Northwind Rally", "900102", 0),
@@ -68,9 +69,9 @@ class ScreensTest {
         return v
     }
 
-    @Test fun connect() { val v = vm(false); paparazzi.snapshot { LobbyTheme(Color(v.accent), null) { CompositionLocalProvider(LocalActivityResultRegistryOwner provides noResults) { ConnectScreen(v) } } } }
-    @Test fun home() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null) { MainScreen(v) } } }
-    @Test fun library() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null) { MainScreen(v, 1) } } }
-    @Test fun friends() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null) { MainScreen(v, 2) } } }
-    @Test fun game() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null) { GameScreen(v, v.games[0]) {} } } }
+    @Test fun connect() { val v = vm(false); paparazzi.snapshot { LobbyTheme(Color(v.accent), null, v.state?.grad.orEmpty().map { Color(it) }) { CompositionLocalProvider(LocalActivityResultRegistryOwner provides noResults) { ConnectScreen(v) } } } }
+    @Test fun home() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null, v.state?.grad.orEmpty().map { Color(it) }) { MainScreen(v) } } }
+    @Test fun library() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null, v.state?.grad.orEmpty().map { Color(it) }) { MainScreen(v, 1) } } }
+    @Test fun friends() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null, v.state?.grad.orEmpty().map { Color(it) }) { MainScreen(v, 2) } } }
+    @Test fun game() { val v = vm(true); paparazzi.snapshot { LobbyTheme(Color(v.accent), null, v.state?.grad.orEmpty().map { Color(it) }) { GameScreen(v, v.games[0]) {} } } }
 }

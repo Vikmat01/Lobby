@@ -812,6 +812,18 @@ ipcMain.handle('friends:open', (_e, { kind, id, appid, lobby }) => {
 
 // ---------- Lobby Companion (phone) ----------
 const ACCENT_BASE = { 'grad:sunset': '#FF8A5B', 'grad:chrome': '#D9DEE5', 'grad:aurora': '#5EE7C4' };
+const ACCENT_GRAD = {
+  'grad:sunset': ['#FF5F6D', '#FFC371', '#FF8A5B'],
+  'grad:chrome': ['#8E9EAB', '#F5F7FA', '#9AA6B2', '#FFFFFF'],
+  'grad:aurora': ['#43E97B', '#38F9D7', '#8B7CFF', '#D77BF0'],
+};
+// the phone follows the PC's colours; special accents only once they are unlocked (the PC falls back otherwise)
+const remoteTheme = () => {
+  const lv = (() => { const v = bro.view(); return Math.max(v.level, v.peak || 1); })();
+  const need = { 'grad:sunset': 12, 'grad:chrome': 18, 'grad:aurora': 25 }[settings.accent];
+  const a = need && lv < need ? DEFAULTS.accent : settings.accent;
+  return { accent: ACCENT_BASE[a] || a || DEFAULTS.accent, grad: ACCENT_GRAD[a] || null };
+};
 const remoteArt = (g, v) => {
   const out = {};
   for (const k of ['cover', 'hero', 'wide']) out[k] = v.art[k].slice(0, 3).map((u, i) => (/^https:/.test(u) ? u : `/art/${encodeURIComponent(g.id)}/${k}/${i}`));
@@ -832,7 +844,7 @@ const remote = require('./remote').create({
       const p = library.profile;
       const sg = session && library.games[session.gameId];
       return {
-        accent: ACCENT_BASE[settings.accent] || settings.accent || DEFAULTS.accent,
+        ...remoteTheme(),
         profile: { name: (p && p.personaName) || 'Игрок', avatar: p && p.avatar ? (/^https?:/.test(p.avatar) ? p.avatar : '/avatar') : null },
         session: session ? { gameId: session.gameId, name: sg ? sg.customName || sg.name : '', since: session.start, state: session.state } : null,
         bro: bro.view(), downloads,
@@ -899,6 +911,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if ('autostart' in patch && steam.IS_WIN) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ['--hidden'] });
   if ('background' in patch || 'guideButton' in patch) applyBackground();
   if ('remote' in patch) applyRemote();
+  if ('accent' in patch && remote.running()) remote.broadcast('theme', remoteTheme());
   return settings;
 });
 ipcMain.handle('library:get', async () => {

@@ -117,11 +117,7 @@ private fun HeroCard(vm: LobbyVm, g: Game, running: Boolean, state: String?, ope
                 style = MaterialTheme.typography.bodyMedium, color = C.text2)
             if (!running) {
                 Spacer(Modifier.height(12.dp))
-                Button(onClick = { vm.launch(g) }, colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.Black),
-                    shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
-                    Icon(Icons.Filled.PlayArrow, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp))
-                    Text("Играть на ПК", fontWeight = FontWeight.Bold)
-                }
+                AccentButton("Играть на ПК", { vm.launch(g) }, icon = Icons.Filled.PlayArrow)
             }
         }
     }
@@ -154,7 +150,8 @@ private fun ChallengeCard(vm: LobbyVm, c: Challenge, g: Game?, open: (String) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (c.done) "✓ выполнено" else "+${c.xp} XP" + if (week) " · ×2" else "", color = if (c.done) C.text else Color.Black,
                     fontWeight = FontWeight.ExtraBold, fontSize = 12.sp,
-                    modifier = Modifier.background(if (c.done) C.card2 else accent, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).then(if (c.done) Modifier.background(C.card2) else Modifier.background(LocalAccentBrush.current))
+                        .padding(horizontal = 7.dp, vertical = 2.dp))
                 Spacer(Modifier.weight(1f))
                 if (!c.done && !week) IconButton(onClick = { vm.reroll(c) }, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Filled.Refresh, "Заменить", tint = C.text2, modifier = Modifier.size(18.dp))

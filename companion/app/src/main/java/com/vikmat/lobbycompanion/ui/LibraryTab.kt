@@ -104,7 +104,7 @@ fun LibraryTab(vm: LobbyVm, open: (String) -> Unit) {
         }
         Text("${list.size} " + com.vikmat.lobbycompanion.plural(list.size, "игра", "игры", "игр"), style = MaterialTheme.typography.bodyMedium, color = C.text3,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
-        LazyVerticalGrid(GridCells.Adaptive(104.dp), contentPadding = PaddingValues(18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        LazyVerticalGrid(GridCells.Fixed(3), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxSize()) {
             items(list, key = { it.id }) { g -> CoverTile(g) { open(g.id) } }
         }
@@ -148,14 +148,8 @@ fun GameScreen(vm: LobbyVm, g: Game, close: () -> Unit) {
                 when {
                     running -> Text("Игра запущена на ПК", color = C.ingame, fontWeight = FontWeight.SemiBold)
                     dl != null -> Text("На ПК идёт установка: ${(dl.pct * 100).toInt()}%", color = accent, fontWeight = FontWeight.SemiBold)
-                    g.installed -> Button({ vm.launch(g) }, colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.Black),
-                        shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().height(54.dp)) {
-                        Icon(Icons.Filled.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Играть на ПК", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    }
-                    g.source != "custom" && g.owned -> Button({ vm.install(g) }, colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.Black),
-                        shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().height(54.dp)) {
-                        Icon(Icons.Filled.KeyboardArrowDown, null); Spacer(Modifier.width(8.dp)); Text("Установить на ПК", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    }
+                    g.installed -> AccentButton("Играть на ПК", { vm.launch(g) }, Modifier.fillMaxWidth(), Icons.Filled.PlayArrow, big = true)
+                    g.source != "custom" && g.owned -> AccentButton("Установить на ПК", { vm.install(g) }, Modifier.fillMaxWidth(), Icons.Filled.KeyboardArrowDown, big = true)
                 }
             }
         }

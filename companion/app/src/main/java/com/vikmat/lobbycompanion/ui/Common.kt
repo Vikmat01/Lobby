@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -59,10 +64,12 @@ object C {
 }
 
 val LocalAccent = staticCompositionLocalOf { Color(DEFAULT_ACCENT) }
+/** Special accents from the PC (Закат, Хром, Аврора) are gradients; plain ones are a solid brush. */
+val LocalAccentBrush = staticCompositionLocalOf<Brush> { SolidColor(Color(DEFAULT_ACCENT)) }
 val LocalClient = staticCompositionLocalOf<Client?> { null }
 
 @Composable
-fun LobbyTheme(accent: Color, client: Client?, content: @Composable () -> Unit) {
+fun LobbyTheme(accent: Color, client: Client?, grad: List<Color> = emptyList(), content: @Composable () -> Unit) {
     val scheme: ColorScheme = darkColorScheme(
         primary = accent, onPrimary = Color.Black, background = C.bg, surface = C.bg, surfaceVariant = C.card,
         onBackground = C.text, onSurface = C.text, onSurfaceVariant = C.text2, secondary = accent,
@@ -78,7 +85,13 @@ fun LobbyTheme(accent: Color, client: Client?, content: @Composable () -> Unit) 
         bodyMedium = base.copy(fontSize = 14.sp, color = C.text2),
         labelMedium = base.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp),
     )
-    CompositionLocalProvider(LocalAccent provides accent, LocalClient provides client) {
+    val brush = if (grad.size >= 2) Brush.linearGradient(grad) else SolidColor(accent)
+    // narrow or zoomed-in screens: lay out as if the phone were 400 dp wide, so everything fits
+    val conf = LocalConfiguration.current
+    val d = LocalDensity.current
+    val k = if (conf.screenWidthDp in 1..399) conf.screenWidthDp / 400f else 1f
+    val density = Density(d.density * k, d.fontScale.coerceAtMost(1.15f))
+    CompositionLocalProvider(LocalAccent provides accent, LocalAccentBrush provides brush, LocalClient provides client, LocalDensity provides density) {
         MaterialTheme(colorScheme = scheme, typography = type, content = content)
     }
 }
@@ -90,10 +103,11 @@ fun Eyebrow(text: String, color: Color = LocalAccent.current, modifier: Modifier
 }
 
 @Composable
-fun Bar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 6.dp, color: Color = LocalAccent.current) {
+fun Bar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 6.dp, color: Color? = null) {
     val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(600), label = "bar")
     Box(modifier.height(height).clip(RoundedCornerShape(height)).background(Color(0x22FFFFFF))) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(height)).background(color))
+        val fill = if (color != null) Modifier.background(color) else Modifier.background(LocalAccentBrush.current)
+        Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(height)).then(fill))
     }
 }
 
@@ -149,5 +163,18 @@ fun Avatar(url: String?, name: String, size: Dp, ring: Color? = null, modifier: 
         } else {
             Text(name.take(1).uppercase(), fontWeight = FontWeight.ExtraBold, fontSize = (size.value * 0.4f).sp, textAlign = TextAlign.Center)
         }
+    }
+}
+
+/** Main action button, filled with the PC's accent (gradient for special accents). */
+@Composable
+fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, big: Boolean = false) {
+    androidx.compose.foundation.layout.Row(
+        modifier.clip(RoundedCornerShape(if (big) 14.dp else 12.dp)).background(LocalAccentBrush.current)
+            .clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = if (big) 15.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+    ) {
+        if (icon != null) { androidx.compose.material3.Icon(icon, null, tint = Color.Black, modifier = Modifier.size(20.dp)); androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp)) }
+        Text(text, color = Color.Black, fontWeight = FontWeight.Bold, fontSize = if (big) 17.sp else 15.sp)
     }
 }

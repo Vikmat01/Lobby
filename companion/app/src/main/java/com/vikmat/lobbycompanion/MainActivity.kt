@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handle(intent)
         setContent {
-            LobbyTheme(Color(vm.accent), vm.client) {
+            LobbyTheme(Color(vm.accent), vm.client, vm.state?.grad.orEmpty().map { Color(it) }) {
                 // back from the background: reconnect right away instead of waiting for the retry timer
                 LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (vm.phase == Phase.Offline) vm.connect() }
                 Crossfade(vm.phase == Phase.Pairing, label = "screen") { pairing ->

@@ -154,6 +154,7 @@ class LobbyVm(app: Application) : AndroidViewModel(app) {
                     message = if (lv > 0) "Новый уровень: $lv! +$xp XP" else "Челлендж выполнен: +$xp XP"
                 }
             }
+            "theme" -> state = s.copy(accent = parseColor(d.optString("accent")), grad = parseGrad(d))
             "ach-new" -> {
                 val n = d.optJSONArray("items")?.length() ?: d.optJSONArray("fresh")?.length() ?: 0
                 message = if (n > 0) "Новые достижения: $n" else "Новые достижения"

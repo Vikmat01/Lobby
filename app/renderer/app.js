@@ -2423,8 +2423,19 @@ function keepScroll(root) {
   const old = root.querySelector('.sheet-scroll');
   const top = old ? old.scrollTop : 0;
   const rebuilt = !!root.querySelector('.sheet');
+  // switches that are about to change: the new one starts in the old position and slides over
+  const was = new Map([...root.querySelectorAll('[data-key] .toggle')].map((t) => [t.closest('[data-key]').dataset.key, t.classList.contains('on')]));
   return () => {
     if (rebuilt) root.querySelectorAll('.sheet, .scrim').forEach((e) => e.classList.add('settled'));
+    const flip = [...root.querySelectorAll('[data-key] .toggle')].filter((t) => {
+      const before = was.get(t.closest('[data-key]').dataset.key);
+      return before != null && before !== t.classList.contains('on');
+    });
+    if (flip.length) {
+      flip.forEach((t) => t.classList.toggle('on'));
+      void root.offsetWidth;
+      flip.forEach((t) => t.classList.toggle('on'));
+    }
     const n = root.querySelector('.sheet-scroll');
     if (n && top) n.scrollTo({ top, behavior: 'instant' });
   };
