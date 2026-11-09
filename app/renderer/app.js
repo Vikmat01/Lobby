@@ -2410,10 +2410,16 @@ function openSearch() {
 // settings
 // =====================================================================
 // a sheet rebuilt in place keeps its scroll position (set instantly, not with the smooth scroll)
+// and does not replay its slide-in animation: only the first build of a sheet animates
 function keepScroll(root) {
   const old = root.querySelector('.sheet-scroll');
   const top = old ? old.scrollTop : 0;
-  return () => { const n = root.querySelector('.sheet-scroll'); if (n && top) n.scrollTo({ top, behavior: 'instant' }); };
+  const rebuilt = !!root.querySelector('.sheet');
+  return () => {
+    if (rebuilt) root.querySelectorAll('.sheet, .scrim').forEach((e) => e.classList.add('settled'));
+    const n = root.querySelector('.sheet-scroll');
+    if (n && top) n.scrollTo({ top, behavior: 'instant' });
+  };
 }
 function openSettings() {
   const root = h('div', {});

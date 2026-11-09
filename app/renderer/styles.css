@@ -221,6 +221,7 @@ button { font: inherit; color: inherit; }
 .layer .gp-cover { animation: cover-in 560ms cubic-bezier(.2,.8,.2,1) 80ms both; }
 @keyframes cover-in { from { opacity: 0; transform: translateX(40px) rotate(2deg); } to { opacity: 1; transform: none; } }
 .layer .sheet { animation: sheet-in 320ms cubic-bezier(.2,.8,.2,1) both; }
+.layer .sheet.settled, .layer .scrim.settled { animation: none; }
 @keyframes sheet-in { from { transform: translateX(100%); } to { transform: none; } }
 .layer .menu, .layer .running { animation: pop-in 260ms cubic-bezier(.34,1.4,.64,1) both; }
 @keyframes pop-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
@@ -255,7 +256,8 @@ button { font: inherit; color: inherit; }
   padding: 96px 56px 90px; display: flex; flex-direction: column; gap: 10px; overflow: hidden;
 }
 .sheet h1 { margin: 0 0 16px; font-family: var(--display); font-weight: 800; font-size: 40px; color: #fff; }
-.sheet-scroll { overflow: hidden; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; padding: 6px; margin: -6px; }
+/* room around the rows so a focused row's ring and glow are never cut off */
+.sheet-scroll { overflow: hidden; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; padding: 20px; margin: -20px; }
 .group-label { margin: 18px 0 4px; font-size: 14px; font-weight: 600; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; }
 .srow { transition: background 140ms, transform 200ms cubic-bezier(.34,1.56,.64,1);
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 68px; padding: 14px 22px;
